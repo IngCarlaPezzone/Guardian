@@ -2,149 +2,98 @@
 
 Este archivo define las reglas permanentes de trabajo para cualquier agente o instancia de Codex que opere sobre este repositorio.
 
-Debe leerse junto con:
+Las funcionalidades, etapas activas y criterios de aceptación deben consultarse en las especificaciones vigentes dentro de `docs/`.
 
-- `docs/Guardian_Propuesta_Arquitectura_Roadmap.md`
-- `docs/Guardian_Etapa_0_Especificacion_Funcional_Tecnica.md`
+## 1. Fuentes de verdad
+
+Antes de modificar código:
+
+1. Leer este `AGENTS.md`.
+2. Identificar y leer la especificación técnica de la etapa o iteración activa.
+3. Revisar la documentación de arquitectura y los archivos relevantes del código existente.
+4. No implementar funcionalidades futuras únicamente porque aparezcan en un roadmap.
 
 En caso de conflicto:
 
-1. La especificación funcional/técnica de la etapa activa tiene prioridad.
+1. La especificación funcional/técnica de la iteración activa tiene prioridad.
 2. Luego este `AGENTS.md`.
-3. Luego el roadmap general.
-4. Finalmente, las decisiones técnicas menores pueden resolverse por criterio de implementación.
+3. Luego la documentación general de arquitectura/roadmap.
+4. Las decisiones técnicas menores pueden resolverse por criterio de implementación.
 
----
+## 2. Guardian es un producto existente
 
-# 1. Objetivo actual
+Guardian es una aplicación Windows funcional que debe evolucionar de forma incremental.
 
-El objetivo activo es implementar la **Etapa 0 de Guardian**.
-
-Guardian ya existe y debe evolucionarse de forma incremental.
-
-No debe reescribirse innecesariamente.
-
-La Etapa 0 busca principalmente:
-
-- administración remota;
-- configuración remota del intervalo de disparo;
-- backend local;
-- PostgreSQL;
-- Guardian Admin;
-- identificación de dispositivo;
-- heartbeat;
-- versionado;
-- releases manuales;
-- Guardian Updater;
-- preservación de configuración;
-- rollback;
-- funcionamiento local-first/offline;
-- preparación de un repositorio público seguro.
-
----
-
-# 2. Fuente de verdad
-
-Antes de modificar código, leer completamente:
-
-```text
-docs/Guardian_Propuesta_Arquitectura_Roadmap.md
-docs/Guardian_Etapa_0_Especificacion_Funcional_Tecnica.md
-```
-
-No implementar funcionalidades futuras solamente porque aparecen en el roadmap.
-
-El roadmap define dirección.
-
-La especificación de la etapa activa define qué construir ahora.
-
----
-
-# 3. Guardian existente
-
-Guardian es una aplicación Windows existente.
-
-La implementación actual debe tratarse como producto funcional a conservar.
-
-No sustituir:
+No sustituir innecesariamente:
 
 - lenguaje;
 - framework;
 - mecanismo de bloqueo;
-- lógica de misión;
+- lógica de misión existente;
 - contador;
 - watchdog;
-- bandeja;
-- audio;
+- bandeja de Windows;
+- manejo de audio;
 - autoarranque;
+- arquitectura servidor/cliente.
 
-salvo que exista una necesidad técnica concreta documentada en la especificación.
+No migrar a otra tecnología únicamente por preferencia técnica.
 
-No migrar a otra tecnología solamente por preferencia técnica.
+## 3. Cambios incrementales
 
----
-
-# 4. Principio de cambios incrementales
-
-Trabajar en pasos pequeños.
+Trabajar en bloques pequeños.
 
 Para cada bloque:
 
-1. inspeccionar código existente;
-2. entender impacto;
+1. inspeccionar el código existente;
+2. entender el impacto;
 3. modificar lo mínimo necesario;
 4. ejecutar pruebas;
 5. corregir regresiones;
 6. documentar cambios relevantes;
 7. recién entonces continuar.
 
-No acumular múltiples refactors grandes antes de validar comportamiento.
+Evitar refactors masivos que no sean necesarios para cumplir la especificación.
 
----
-
-# 5. No avanzar sobre una base rota
+## 4. No avanzar sobre una base rota
 
 Si una prueba falla por un cambio nuevo:
 
 - investigar;
 - corregir;
-- repetir prueba;
-- no continuar a la siguiente etapa con la falla abierta.
+- repetir la prueba;
+- no continuar dejando la regresión abierta.
 
-Si una prueba ya fallaba antes del cambio:
+Si una prueba ya fallaba antes:
 
 - documentarlo claramente;
 - verificar que el cambio no la empeoró;
 - no ocultar el problema.
 
----
+No considerar una iteración completa sólo porque el código compila.
 
-# 6. Privacidad obligatoria
+## 5. Privacidad obligatoria
 
-El repositorio final será público.
+El repositorio es público y debe mantenerse apto para publicación.
 
-No debe contener información personal.
+Nunca versionar información personal real, incluyendo:
 
-Nunca versionar:
-
-- nombres reales;
-- apellidos;
+- nombres y apellidos;
 - edad;
 - domicilio;
-- ciudad real;
-- provincia real;
+- ciudad o provincia real vinculada a una persona;
 - datos de menores;
 - información familiar;
 - preguntas personales reales;
-- historial real;
+- historial real de uso;
 - eventos reales;
-- archivos de prueba familiares;
 - configuraciones reales;
-- backups reales.
+- backups reales;
+- documentos internos con contexto privado.
 
 Usar siempre datos neutrales de ejemplo.
 
-Ejemplos permitidos:
+Ejemplos válidos:
 
 ```text
 Sample-PC
@@ -153,15 +102,11 @@ example.com
 192.168.1.xxx
 ```
 
-No inventar datos personales ficticios que parezcan reales del usuario.
-
----
-
-# 7. Secretos
+## 6. Secretos
 
 Nunca hardcodear ni versionar:
 
-- passwords;
+- contraseñas;
 - tokens;
 - API keys;
 - Cloudflare Tunnel tokens;
@@ -172,15 +117,13 @@ Nunca hardcodear ni versionar:
 - cookies;
 - certificados privados.
 
-Usar:
+Los valores reales deben vivir en:
 
 ```text
 .env
 ```
 
-para valores reales.
-
-El repositorio solo debe incluir:
+El repositorio sólo debe incluir:
 
 ```text
 .env.example
@@ -188,160 +131,97 @@ El repositorio solo debe incluir:
 
 con valores ficticios.
 
----
+Nunca registrar secretos en logs, payloads o mensajes de error.
 
-# 8. Git y repositorio público
+## 7. Git y publicación
 
-No hacer push automáticamente.
+No hacer push, merge, force push ni publicar releases automáticamente salvo instrucción explícita.
 
-No publicar el repositorio sin revisión.
+Antes de publicar cambios:
 
-El árbol actual puede contener:
+- revisar `git status`;
+- revisar `git diff`;
+- ejecutar tests relevantes;
+- comprobar que no se agregaron secretos ni datos personales.
 
-- `.git`;
-- configuraciones;
-- datos locales;
-- documentos privados;
-- archivos de prueba.
+No usar `git reset --hard`, force push ni borrar ramas con trabajo sin autorización explícita.
 
-Antes del primer repositorio público:
+Trabajar las nuevas etapas en ramas `feature/...` creadas desde una base estable.
 
-1. hacer backup;
-2. auditar contenido;
-3. sanitizar;
-4. crear historial Git limpio;
-5. ejecutar búsqueda de secretos;
-6. ejecutar búsqueda de datos personales;
-7. revisar `.gitignore`;
-8. recién después preparar el primer commit público.
+## 8. Arquitectura general
 
-No confiar en borrar archivos privados mediante commits posteriores.
-
----
-
-# 9. Proyectos externos
-
-Guardian es un proyecto independiente.
-
-No modificar ni reutilizar directamente código de:
-
-- Gaiwyx;
-- Qué Comemos;
-- otros proyectos del usuario.
-
-Se pueden tomar conceptos arquitectónicos como referencia, pero no introducir dependencias cruzadas.
-
----
-
-# 10. Arquitectura de Etapa 0
-
-Infraestructura objetivo:
+Mantener la arquitectura simple:
 
 ```text
-Windows 10 Home
-Docker Desktop
-Docker Compose
-FastAPI
+Guardian Client Windows
+        ↓
+Guardian Server / API
+        ↓
 PostgreSQL
+
 Guardian Admin
-Cloudflare Tunnel
-Guardian Client
+        ↓
+Guardian Server
+
 Guardian Updater
+        ↓
+Releases publicados
 ```
 
-El servidor principal vive en la PC doméstica destinada a servidor.
+Tecnologías actuales:
 
-PostgreSQL vive en Docker.
+- Windows;
+- WPF / .NET Framework;
+- FastAPI;
+- SQLAlchemy;
+- Alembic;
+- Jinja2;
+- PostgreSQL;
+- Docker Compose;
+- Cloudflare Tunnel/Access cuando corresponda.
 
-Guardian Client se comunica por LAN.
+No crear microservicios innecesarios.
 
-Guardian Admin puede exponerse por subdominio mediante Cloudflare Tunnel.
+## 9. Local-first
 
-No exponer PostgreSQL a Internet.
-
----
-
-# 11. Cloud
-
-No agregar servicios cloud pagos.
-
-No introducir:
-
-- AWS;
-- Azure;
-- GCP;
-- Render;
-- Railway;
-- Supabase;
-- Firebase;
-
-salvo instrucción explícita posterior.
-
-Cloudflare puede utilizarse únicamente según la especificación vigente.
-
----
-
-# 12. n8n e inteligencia artificial
-
-No incorporar en Etapa 0:
-
-- n8n;
-- agentes;
-- LLMs;
-- generación automática de desafíos;
-- recomendaciones inteligentes.
-
-Estas capacidades pertenecen a iteraciones posteriores.
-
----
-
-# 13. Guardian Client es local-first
-
-El Client debe continuar funcionando aunque:
+Guardian Client debe seguir funcionando aunque:
 
 - Docker esté detenido;
 - PostgreSQL no responda;
 - Guardian API no responda;
-- la red doméstica falle temporalmente.
+- la red falle temporalmente;
+- Internet no esté disponible.
 
-En caso de pérdida de servidor:
+En esos casos debe, según corresponda:
 
-- continuar contador;
-- continuar bloqueo;
-- continuar desafíos;
-- utilizar última configuración válida;
-- registrar errores localmente;
+- conservar la última configuración válida;
+- mantener el funcionamiento básico local;
+- registrar eventos localmente;
+- conservar telemetría pendiente;
 - reintentar más adelante;
-- no mostrar errores técnicos al niño.
+- evitar mostrar errores técnicos innecesarios al usuario final.
 
-Nunca convertir el servidor en dependencia necesaria para el funcionamiento básico.
+El servidor no debe convertirse en dependencia obligatoria del funcionamiento básico del cliente.
 
----
+## 10. Identidad y configuración local
 
-# 14. Configuración remota
+Cada instalación debe conservar un `DeviceId` UUID persistente.
 
-Para Etapa 0 la configuración remota obligatoria es:
+Distinguir:
 
-```text
-IntervalSeconds
-```
+- `machine_name`: hostname técnico reportado por el cliente;
+- `display_name`: nombre visible editable desde Admin.
 
-No ampliar el Admin con configuraciones futuras salvo necesidad técnica.
+`display_name` no debe ser sobrescrito por heartbeats o registro automático.
 
-La arquitectura puede quedar preparada para crecer, pero la interfaz no debe sobreconstruirse.
-
----
-
-# 15. Configuración local
-
-Una actualización nunca debe borrar:
+Las actualizaciones deben preservar datos locales necesarios, incluyendo cuando corresponda:
 
 - `config.json`;
 - `events.jsonl`;
+- `events-pending.jsonl`;
 - Device UUID;
 - device token;
-- configuración remota persistida;
-- datos locales necesarios.
+- configuración remota persistida.
 
 Regla:
 
@@ -350,97 +230,78 @@ instalación inicial → crear si no existe
 actualización       → preservar
 ```
 
----
+## 11. Telemetría
 
-# 16. Identidad de dispositivo
+La telemetría nunca debe romper Guardian.
 
-No usar exclusivamente `Environment.MachineName` como identidad.
+Principios:
 
-Cada instalación debe tener:
+- persistencia local primero;
+- sincronización posterior;
+- IDs únicos por evento;
+- deduplicación en servidor;
+- retry con backoff;
+- tolerancia a red/servidor offline;
+- ningún error de telemetría debe cerrar la aplicación;
+- no registrar secretos.
+
+Mantener acceso coordinado y seguro a los archivos locales de eventos.
+
+## 12. Controles remotos
+
+Los controles remotos deben reutilizar la lógica local existente siempre que sea posible.
+
+Distinguir claramente:
+
+- `Activo`: cliente online y monitoreo habilitado;
+- `Pausado`: cliente online, conectado y sin disparos automáticos;
+- `Offline`: sin heartbeat reciente.
+
+Pausar no debe equivaler a cerrar Guardian.
+
+Mientras está pausado, el cliente debe poder seguir:
+
+- enviando heartbeat;
+- sincronizando telemetría;
+- consultando configuración;
+- recibiendo updates;
+- recibiendo comandos remotos.
+
+El estado mostrado por Admin debe converger al estado real reportado por el cliente.
+
+## 13. Comunicación
+
+Preferir HTTP simple + polling mientras siga siendo suficiente.
+
+No agregar sin necesidad:
+
+- WebSockets;
+- Redis;
+- brokers;
+- colas externas;
+- infraestructura adicional.
+
+Las acciones máquina-servidor deben usar autenticación de dispositivo y no depender de la sesión web de Admin.
+
+## 14. Base de datos
+
+Usar PostgreSQL como base central.
+
+Aplicar cambios de esquema mediante Alembic.
+
+No modificar tablas manualmente como solución permanente.
+
+No destruir volúmenes de PostgreSQL durante actualizaciones normales.
+
+Nunca usar:
 
 ```text
-Device UUID
+docker compose down -v
 ```
 
-persistente.
+como parte de un update normal.
 
-También registrar:
-
-```text
-machine_name
-display_name
-```
-
-`display_name` es editable por Admin.
-
----
-
-# 17. Comunicación
-
-Preferir HTTP simple + polling.
-
-No agregar WebSockets para Etapa 0.
-
-No agregar colas de mensajes.
-
-No agregar Redis.
-
-No agregar brokers.
-
-Mantener la solución simple.
-
----
-
-# 18. Backend
-
-El backend debe ser una aplicación única y simple.
-
-Preferir:
-
-```text
-FastAPI
-SQLAlchemy
-Alembic
-Jinja2
-PostgreSQL
-```
-
-Admin y API pueden convivir en la misma aplicación.
-
-No crear microservicios innecesarios.
-
----
-
-# 19. Guardian Admin
-
-Para Etapa 0:
-
-- un administrador;
-- usuario + contraseña;
-- sin roles;
-- sin multiusuario;
-- sin recuperación por email;
-- sin OAuth.
-
-Debe permitir como mínimo:
-
-- ver dispositivo;
-- estado online/offline;
-- versión;
-- último heartbeat;
-- nombre visible;
-- intervalo;
-- editar intervalo;
-- ver releases;
-- ordenar actualización.
-
----
-
-# 20. Releases
-
-No implementar CI/CD.
-
-Los releases son manuales en Etapa 0.
+## 15. Releases y versionado
 
 Usar Semantic Versioning:
 
@@ -448,38 +309,51 @@ Usar Semantic Versioning:
 MAJOR.MINOR.PATCH
 ```
 
-La fuente principal de versión debe ser:
+La fuente principal de versión es:
 
 ```text
 VERSION
 ```
 
-No duplicar valores de versión manualmente si puede evitarse.
+No duplicar versiones manualmente si puede evitarse.
 
----
+Los releases son explícitos y deben incluir:
 
-# 21. Updater
+- versión;
+- artefacto;
+- SHA-256;
+- descripción/notas breves cuando corresponda.
 
-Guardian Updater debe ser un ejecutable separado.
+No asumir que:
 
-Nunca intentar reemplazar el ejecutable principal desde el mismo proceso que está siendo reemplazado.
+```text
+versión instalada == último release publicado
+```
 
-Flujo:
+El sistema debe soportar upgrade y downgrade cuando la especificación lo requiera.
+
+## 16. Updater
+
+Guardian Updater es un ejecutable separado.
+
+Nunca reemplazar el ejecutable principal desde el mismo proceso que está siendo reemplazado.
+
+Flujo general:
 
 ```text
 orden
 ↓
 descarga
 ↓
-SHA-256
+validación SHA-256
 ↓
 backup
 ↓
-cierre Guardian
+cierre real de Guardian
 ↓
-reemplazo binarios
+reemplazo de binarios
 ↓
-inicio Guardian
+inicio de Guardian
 ↓
 validación
 ↓
@@ -491,345 +365,197 @@ Si falla:
 ```text
 rollback
 ↓
-reinicio versión anterior
+reinicio de versión anterior
 ↓
 reporte de error
 ```
 
----
+Mantener metadatos correctos de:
 
-# 22. Seguridad de releases
+- versión origen;
+- versión destino;
+- dirección (`upgrade`, `downgrade`, `same`);
+- command id;
+- release id.
 
-Cada release debe registrar:
+No iniciar dos instancias de Guardian durante un update.
 
-```text
-SHA-256
-```
+## 17. Admin
 
-No instalar si el hash no coincide.
+Guardian Admin debe priorizar claridad operativa.
 
-Firma digital de binarios queda fuera de Etapa 0.
+Cuando una acción remota sea asíncrona, mostrar estado suficiente para que no parezca que “no pasó nada”.
 
----
+Distinguir cuando corresponda:
 
-# 23. Base de datos
+- pendiente;
+- esperando dispositivo;
+- recibida;
+- en progreso;
+- completada;
+- fallida;
+- cancelada.
 
-Usar PostgreSQL.
+Los errores reales deben diferenciarse de notas informativas.
 
-Aplicar cambios de esquema mediante Alembic.
+## 18. Funcionamiento offline y comandos pendientes
 
-No modificar manualmente tablas como solución permanente.
+Un dispositivo offline no puede ejecutar comandos hasta volver a conectarse.
 
-Datos deben persistir mediante volumen Docker.
-
-No borrar volúmenes durante actualizaciones normales.
-
----
-
-# 24. Backups
-
-Mantener script de backup local.
-
-No enviar backups a servicios externos en Etapa 0.
-
-No versionar backups.
-
----
-
-# 25. Docker
-
-El entorno debe poder levantarse con Docker Compose.
-
-Scripts deben ser idempotentes cuando sea razonable.
-
-Nunca ejecutar:
+No confundir:
 
 ```text
-docker compose down -v
+reanudar monitoreo
 ```
 
-como parte de una actualización normal.
-
-No destruir volúmenes de PostgreSQL salvo instrucción explícita.
-
----
-
-# 26. Entorno de pruebas
-
-Primero trabajar exclusivamente en la PC servidor.
-
-Usar modo de prueba del Client.
-
-No instalar Guardian en la PC administrada real mientras no se complete el checklist previo.
-
-Orden:
+con:
 
 ```text
-PC servidor
-↓
-pruebas locales
-↓
-prueba instalador local
-↓
-prueba updater local
-↓
-rollback
-↓
-recién después PC administrada
+encender físicamente una PC
 ```
 
----
+No implementar Wake-on-LAN ni control de energía salvo especificación explícita.
 
-# 27. Datos de prueba
+Los comandos pendientes deben ser idempotentes cuando corresponda y no bloquear indefinidamente comandos posteriores.
 
-Usar directorios separados.
+## 19. Datos y entornos de prueba
 
-Nunca ejecutar tests destructivos contra el Guardian real.
+Usar dispositivos y directorios de prueba separados cuando una prueba pueda ser destructiva.
 
-Usar por ejemplo:
+No mezclar datos de test con datos reales.
+
+No ejecutar pruebas destructivas sobre una instalación real sin indicación explícita.
+
+El flujo recomendado para releases es:
 
 ```text
-GUARDIAN_HOME=<test-dir>
+dispositivo de prueba/staging
+↓
+validación
+↓
+dispositivo real
 ```
 
-Los datos de test no deben mezclarse con:
+No enviar updates automáticamente al dispositivo real.
 
-```text
-%LOCALAPPDATA%\Guardian
-```
+## 20. Tests
 
-real.
-
----
-
-# 28. Tests
-
-Agregar pruebas para nuevas capacidades.
+Agregar pruebas para nuevas capacidades relevantes.
 
 No eliminar tests existentes para hacer pasar una implementación.
 
-No reducir cobertura funcional deliberadamente.
+No reducir cobertura deliberadamente.
 
-Como mínimo validar:
+Ejecutar, según corresponda:
 
-- Device UUID persistente;
-- registro;
-- auth;
-- heartbeat;
-- configuración;
-- fallback offline;
-- releases;
-- SHA;
-- updater;
-- rollback;
-- preservación de configuración.
+```powershell
+pytest server/tests
+.\scripts\build.ps1
+.\scripts\self-test.ps1
+```
 
----
+y cualquier test adicional de updater/cliente relacionado con el cambio.
 
-# 29. Logs
-
-No registrar secretos.
-
-Nunca imprimir:
-
-- password;
-- tokens completos;
-- session secrets;
-- connection strings con password.
-
-Los errores deben ser útiles pero seguros.
-
----
-
-# 30. Dependencias
+## 21. Dependencias
 
 Agregar la menor cantidad posible.
 
 Antes de agregar una dependencia:
 
-1. verificar si ya existe solución simple;
-2. evaluar si es necesaria;
-3. evitar frameworks grandes para problemas pequeños.
+1. verificar si ya existe una solución simple;
+2. comprobar que sea realmente necesaria;
+3. evitar frameworks grandes para problemas pequeños;
+4. evaluar impacto en build, Docker y publicación.
 
-No introducir frontend SPA en Etapa 0.
-
----
-
-# 31. Refactor
-
-Se permite refactor incremental.
-
-No hacer refactor masivo del Client antes de tener la infraestructura remota funcionando.
-
-Si `Guardian.cs` debe separarse:
-
-- hacerlo gradualmente;
-- conservar comportamiento;
-- mantener build;
-- ejecutar tests después de cada separación significativa.
-
----
-
-# 32. Documentación
+## 22. Documentación
 
 Actualizar documentación cuando cambien:
 
 - arquitectura;
-- comandos;
 - variables de entorno;
-- scripts;
+- comandos;
 - endpoints;
-- flujo de update;
-- pasos de instalación.
+- scripts;
+- flujo de actualización;
+- instalación;
+- comportamiento remoto;
+- persistencia;
+- seguridad.
 
 No dejar documentación contradiciendo el código.
 
----
+Mantener acentos, ortografía y redacción clara en documentación en español.
 
-# 33. Scripts
+## 23. Scripts
 
 Preferir PowerShell para tareas del host Windows.
 
-Scripts requeridos o equivalentes:
+Mantener scripts simples, seguros e idempotentes cuando sea razonable.
 
-```text
-setup-server.ps1
-start-server.ps1
-stop-server.ps1
-update-server.ps1
-backup-db.ps1
+No automatizar acciones destructivas ni despliegues a dispositivos reales sin instrucción explícita.
 
-build.ps1
-self-test.ps1
-run-test-mode.ps1
-package-installer.ps1
+## 24. Scope control
 
-publish-release.ps1
-```
-
-No automatizar acciones remotas todavía.
-
----
-
-# 34. Decisiones menores
-
-Si la especificación no define una decisión técnica menor:
-
-- elegir la alternativa más simple;
-- elegir la más mantenible;
-- evitar nueva infraestructura;
-- evitar nueva dependencia;
-- documentar si la decisión afecta estructura importante.
-
-No preguntar por detalles triviales.
-
----
-
-# 35. Cuándo detenerse y preguntar
-
-Detener el trabajo y pedir decisión al usuario solamente si aparece una cuestión que:
-
-- cambia comportamiento visible del producto;
-- contradice la especificación;
-- implica pérdida de datos;
-- implica publicar algo;
-- implica un servicio pago;
-- implica exponer un nuevo servicio a Internet;
-- implica cambiar tecnología principal;
-- implica reducir seguridad;
-- implica instalar en la PC administrada real antes del momento acordado;
-- requiere información privada real no disponible;
-- requiere credenciales reales.
-
-Para decisiones técnicas internas menores, avanzar autónomamente.
-
----
-
-# 36. No pedir confirmación innecesaria
-
-No interrumpir para preguntar:
-
-- nombres de clases;
-- organización interna menor;
-- librería estándar equivalente;
-- nombres de variables;
-- estructura interna de funciones;
-- detalles triviales de UI;
-- pequeños refactors seguros.
-
-Resolverlos con criterio técnico.
-
----
-
-# 37. Checkpoints
-
-Después de cada bloque importante, informar:
-
-```text
-Qué se implementó
-Qué se probó
-Resultado
-Qué sigue
-Bloqueos reales
-```
-
-No marcar una fase como completa solamente porque el código compila.
-
-Debe cumplirse su criterio de aceptación.
-
----
-
-# 38. Definition of Done
-
-No considerar Etapa 0 terminada hasta que se cumplan los criterios de aceptación definidos en:
-
-```text
-docs/Guardian_Etapa_0_Especificacion_Funcional_Tecnica.md
-```
-
-para todo lo que pueda validarse en la PC servidor.
-
-Las pruebas exclusivas de la PC administrada deben quedar claramente identificadas como pendientes de Fase C.
-
----
-
-# 39. Scope control
-
-Si durante implementación aparece una idea interesante pero fuera de alcance:
+Si aparece una idea útil pero fuera de alcance:
 
 1. no implementarla;
-2. registrarla en documentación de pendientes si resulta útil;
-3. continuar con Etapa 0.
+2. registrarla como pendiente si aporta valor;
+3. continuar con la especificación activa.
 
 Evitar scope creep.
 
----
+## 25. Cuándo detenerse y preguntar
 
-# 40. Principio general
+Pedir decisión al usuario cuando una elección:
 
-Guardian debe evolucionar hacia:
+- cambia comportamiento visible importante;
+- contradice la especificación;
+- implica pérdida de datos;
+- implica publicar o exponer algo;
+- implica un servicio pago;
+- reduce seguridad;
+- cambia tecnología principal;
+- requiere credenciales reales;
+- requiere información privada real;
+- afecta un dispositivo real de manera no reversible.
+
+Para decisiones internas menores, avanzar con criterio técnico.
+
+## 26. Checkpoint final
+
+Al terminar una iteración, informar como mínimo:
 
 ```text
-configuración
-    ≠
-release
+Qué se implementó
+Qué archivos principales cambiaron
+Migraciones/endpoints agregados
+Qué se probó
+Resultado de tests
+Versión final
+Commit creado
+Riesgos o deuda técnica
+Pasos exactos de validación manual
+Confirmación de qué quedó fuera de alcance
 ```
 
-y:
+## 27. Principios permanentes
+
+Guardian debe evolucionar respetando:
 
 ```text
-release
-    ≠
-reinstalación manual
+configuración ≠ release
+release ≠ reinstalación manual
+pausa ≠ offline
+telemetría ≠ dependencia funcional
 ```
 
-sin comprometer:
+Y priorizando siempre:
 
 ```text
 privacidad
+seguridad
 funcionamiento offline
 simplicidad
 mantenibilidad
+observabilidad
 ```
-
-Estas cuatro condiciones tienen prioridad durante toda la Etapa 0.
