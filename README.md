@@ -4,6 +4,14 @@ Guardian es una aplicación Windows **local-first** que interrumpe periódicamen
 
 Además del cliente local, Guardian incluye un servidor central y un panel de administración para configurar dispositivos, consultar actividad, gestionar releases, controlar el monitoreo y ejecutar actualizaciones remotas.
 
+## Cómo funciona Guardian
+
+La siguiente infografía resume los componentes principales y el flujo general de funcionamiento de Guardian.
+
+<p align="center">
+  <img src="docs/assets/guardian-infografia.png" alt="Infografía de Guardian" width="800">
+</p>
+
 **Versión actual:** `0.3.3`
 
 ## Estado actual
