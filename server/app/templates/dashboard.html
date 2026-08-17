@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guardian Admin</title>
+  <link rel="stylesheet" href="/admin/static/admin.css">
+</head>
+<body>
+  <header>
+    <h1>Guardian Admin</h1>
+    <form method="post" action="/admin/logout"><button>Salir</button></form>
+  </header>
+  <main>
+    <section>
+      <h2>Dispositivos</h2>
+      {% for device in devices %}
+      {% set is_online = online_by_device.get(device.id) %}
+      {% set update_state = update_status_by_device.get(device.id) %}
+      {% set guardian_state = guardian_state_by_device.get(device.id) %}
+      {% set device_command = command_status_by_device.get(device.id) %}
+      {% set supports_controls = remote_controls_supported_by_device.get(device.id) %}
+      <article class="card">
+        <div class="row">
+          <strong>{{ device.display_name or device.machine_name }}</strong>
+          <span class="{{ 'ok' if is_online else 'muted' }}">{{ 'Online' if is_online else 'Offline' }}</span>
+        </div>
+        <dl>
+          <dt>PC Windows</dt><dd>{{ device.machine_name }}</dd>
+          <dt>ID tecnico</dt><dd>{{ device.id }}</dd>
+          <dt>Version instalada</dt><dd>{{ device.client_version or '-' }}</dd>
+          <dt>Ultimo heartbeat</dt><dd>{{ device.last_seen_at or '-' }}</dd>
+          <dt>Intervalo</dt><dd>{{ (device.configuration.interval_seconds // 60) if device.configuration else 15 }} min</dd>
+          <dt>Ultimo release publicado</dt><dd>{{ latest.version if latest else '-' }}</dd>
+        </dl>
+        <div class="guardian-state {{ guardian_state }}">
+          <strong>Estado Guardian: {{ 'Activo' if guardian_state == 'active' else ('Pausado' if guardian_state == 'paused' else 'Offline') }}</strong>
+          {% if guardian_state != 'offline' and supports_controls %}
+            {% if device_command %}
+            <p class="muted">Comando {{ device_command.command_type }}: {{ device_command.status }}. Espera su estado terminal.</p>
+            {% else %}
+            <form method="post" action="/admin/devices/{{ device.id }}/commands/{{ 'resume_monitoring' if guardian_state == 'paused' else 'pause_monitoring' }}" class="inline-form command-form">
+              <button>{{ 'Reanudar misiones' if guardian_state == 'paused' else 'Pausar misiones' }}</button>
+            </form>
+            <form method="post" action="/admin/devices/{{ device.id }}/commands/trigger_mission_now" class="inline-form command-form">
+              <button>Probar mision ahora</button>
+            </form>
+            {% endif %}
+          {% elif guardian_state != 'offline' %}
+            <p class="muted">Los controles remotos requieren Guardian 0.3.2 o posterior.</p>
+          {% else %}
+            <p class="muted">Los controles remotos se habilitan cuando el dispositivo vuelva a estar Online.</p>
+          {% endif %}
+        </div>
+        {% if update_state %}
+        {% set command = update_state.command %}
+        <div class="update-status {{ 'active' if update_state.is_active else command.status }}">
+          <strong>{% if command.status == 'pending' and guardian_state == 'offline' %}Actualizacion pendiente: esperando que el dispositivo se conecte{% else %}Actualizacion {{ command.status }}{% endif %}</strong>
+          <dl>
+            <dt>Version origen</dt><dd>{{ command.previous_version or device.client_version or '-' }}</dd>
+            <dt>Version destino</dt><dd>{{ command.target_version }}</dd>
+            <dt>Solicitada</dt><dd>{{ command.requested_at }}</dd>
+            <dt>Inicio</dt><dd>{{ command.started_at or '-' }}</dd>
+            <dt>Ultimo cambio</dt><dd>{{ update_state.last_change or '-' }}</dd>
+            {% if command.error_message %}
+              {% if command.status in ['failed', 'rolled_back'] %}<dt>Error</dt><dd class="error">{{ command.error_message }}</dd>
+              {% else %}<dt>Nota</dt><dd class="muted">{{ command.error_message }}</dd>{% endif %}
+            {% endif %}
+          </dl>
+        </div>
+        {% endif %}
+        <p><a href="/admin/devices/{{ device.id }}/activity">Ver actividad</a></p>
+        <form method="post" action="/admin/devices/{{ device.id }}/config" class="inline-form">
+          <label>Nombre visible<input name="display_name" value="{{ device.display_name or '' }}"></label>
+          <label>Intervalo (min)<input name="interval_minutes" type="number" min="1" max="240" value="{{ (device.configuration.interval_seconds // 60) if device.configuration else 15 }}"></label>
+          <button>Guardar</button>
+        </form>
+        {% if releases %}
+        <form method="post" action="/admin/devices/{{ device.id }}/updates" class="inline-form">
+          <label>Release a instalar
+            <select name="release_id">
+              {% for release in releases %}<option value="{{ release.id }}">{{ release.version }}</option>{% endfor %}
+            </select>
+          </label>
+          <button {{ 'disabled' if update_state and update_state.is_active else '' }}>Actualizar</button>
+        </form>
+        {% if update_state and update_state.is_active %}
+        <p class="muted">{% if command.status == 'pending' and guardian_state == 'offline' %}La orden aun no fue tomada por el dispositivo.{% else %}Hay una actualizacion activa. Espera un estado terminal antes de crear otra orden.{% endif %}</p>
+        {% if command.status == 'pending' %}
+        <form method="post" action="/admin/devices/{{ device.id }}/updates/{{ command.id }}/cancel" class="inline-form command-form">
+          <button>Cancelar actualizacion pendiente</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+        {% if not is_online %}
+        <form method="post" action="/admin/devices/{{ device.id }}/delete" class="inline-form" onsubmit="if (this.confirm_delete.value !== 'ELIMINAR') { alert('Escribi ELIMINAR para confirmar.'); return false; } return confirm('Eliminar dispositivo {{ device.display_name or device.machine_name }} ({{ device.id }})? Esta accion no se puede deshacer.');">
+          <input type="hidden" name="confirm_device_id" value="{{ device.id }}">
+          <label>Confirmar<input name="confirm_delete" placeholder="Escribi ELIMINAR"></label>
+          <button>Eliminar dispositivo</button>
+        </form>
+        {% else %}
+        <p class="muted">Para eliminar este dispositivo, primero debe estar Offline.</p>
+        {% endif %}
+      </article>
+      {% else %}
+      <p class="muted">Todavia no hay dispositivos registrados.</p>
+      {% endfor %}
+    </section>
+    <section>
+      <h2>Releases</h2>
+      {% for release in releases %}
+      <article class="card compact">
+        <strong>{{ release.version }}</strong>
+        {% if release.release_notes %}<p class="release-notes">{{ release.release_notes }}</p>{% endif %}
+        <span>{{ release.filename }}</span>
+        <code>SHA256: {{ release.sha256 }}</code>
+      </article>
+      {% else %}
+      <p class="muted">No hay releases publicados.</p>
+      {% endfor %}
+    </section>
+  </main>
+</body>
+</html>

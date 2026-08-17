@@ -1,0 +1,17 @@
+Esta carpeta contiene las plantillas del instalador, no el paquete final.
+
+Para instalar Guardian en otra computadora, usar:
+
+release\GuardianInstaller\
+
+o:
+
+release\GuardianInstaller.zip
+
+Ese paquete incluye:
+
+- Guardian.exe
+- Guardian.exe.config
+- Instalar-Guardian.bat
+- Desinstalar-Guardian.bat
+- README-INSTALACION.txt

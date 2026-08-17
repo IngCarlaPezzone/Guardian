@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Guardian Releases</title>
+  <link rel="stylesheet" href="/admin/static/admin.css">
+</head>
+<body>
+  <header><h1>Releases</h1><a href="/admin/">Volver</a></header>
+  <main>
+    {% for release in releases %}
+    <article class="card">
+      <strong>{{ release.version }}</strong>
+      {% if release.release_notes %}<p class="release-notes">{{ release.release_notes }}</p>{% endif %}
+      <p>{{ release.filename }} · {{ release.file_size }} bytes</p>
+      <code>SHA256: {{ release.sha256 }}</code>
+    </article>
+    {% else %}
+    <p class="muted">No hay releases publicados.</p>
+    {% endfor %}
+  </main>
+</body>
+</html>
