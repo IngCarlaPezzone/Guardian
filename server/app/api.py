@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from server.app.config import settings
 from server.app.db import get_db
-from server.app.models import Device, DeviceCommand, DeviceConfiguration, DeviceEvent, Release, UpdateCommand
+from server.app.models import Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.security import current_device, hash_secret, new_token, utcnow, verify_secret, VALID_DEVICE_COMMAND_STATUSES, VALID_UPDATE_STATUSES
 from server.app.update_queue import cleanup_update_queue, next_pending_update
 
@@ -119,8 +119,24 @@ def heartbeat(payload: HeartbeatPayload, device: Device = Depends(current_device
 def get_config(device: Device = Depends(current_device)):
     config = device.configuration
     if config is None:
-        return {"version": 1, "interval_seconds": 900, "updated_at": utcnow().isoformat()}
-    return {"version": config.version, "interval_seconds": config.interval_seconds, "updated_at": config.updated_at.isoformat()}
+        return {"version": 1, "interval_seconds": 900, "updated_at": utcnow().isoformat(), "mission_config": {"EnabledSkills": [], "PrivateProfile": {}}}
+    profile = device.mission_profile
+    mission_config = config.mission_config or {}
+    return {
+        "version": config.version,
+        "interval_seconds": config.interval_seconds,
+        "updated_at": config.updated_at.isoformat(),
+        "mission_config": {
+            "EnabledSkills": mission_config.get("enabledSkills", ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"]),
+            "PrivateProfile": {
+                "PreferredName": profile.preferred_name if profile else "",
+                "FirstName": profile.first_name if profile else "",
+                "MiddleName": profile.middle_name if profile else "",
+                "LastName": profile.last_name if profile else "",
+                "BirthDate": profile.birth_date if profile else "",
+            },
+        },
+    }
 
 
 @router.get("/devices/{device_id}/updates/pending")

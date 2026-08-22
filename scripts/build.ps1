@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $root "src\Guardian\Guardian.cs"
+$missionSrc = Join-Path $root "src\Guardian\MissionSystem.cs"
 $updaterSrc = Join-Path $root "updater\src\GuardianUpdater.cs"
 $outDir = Join-Path $root "dist"
 $objDir = Join-Path $root "obj"
@@ -41,6 +42,7 @@ Set-Content -Encoding UTF8 -Path $updaterVersionSrc -Value "namespace GuardianUp
   /reference:System.Drawing.dll `
   /reference:System.Web.Extensions.dll `
   $src `
+  $missionSrc `
   $guardianVersionSrc
 
 if ($LASTEXITCODE -ne 0) {

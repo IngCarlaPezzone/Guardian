@@ -11,7 +11,7 @@ from server.app.admin import sign_username
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
-from server.app.models import Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, Release, UpdateCommand
+from server.app.models import Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.security import hash_secret, utcnow
 
 
@@ -432,3 +432,36 @@ def test_admin_activity_filters_device_events():
     assert "UpdateCompleted" in response.text
     assert "targetVersion" in response.text
     assert "Hora Admin" in response.text
+
+
+def test_admin_mission_configuration_and_private_profile_are_device_scoped():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc1"
+    token = "mission-profile-token"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Mission-Test-PC", token_hash=hash_secret(token), client_version="0.3.3", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=1))
+        db.commit()
+
+    page = client.get(f"/admin/devices/{device_id}/missions")
+    assert page.status_code == 200
+    assert "Comprensión funcional" in page.text
+    assert "aria-label" in page.text
+
+    response = client.post(f"/admin/devices/{device_id}/config", data={
+        "display_name": "Mission Test", "interval_minutes": "15", "missions_submitted": "1",
+        "enabled_skills": ["math.basic_operations_1.subtraction", "comprehension.functional_1.identity"],
+        "preferred_name": "Tomi", "first_name": "Tomás", "middle_name": "", "last_name": "Pérez", "birth_date": "2010-08-23",
+    }, follow_redirects=False)
+    assert response.status_code == 303
+
+    headers = {"Authorization": f"Bearer {token}"}
+    remote = client.get(f"/api/v1/devices/{device_id}/config", headers=headers)
+    assert remote.status_code == 200
+    assert remote.json()["mission_config"]["EnabledSkills"] == ["math.basic_operations_1.subtraction", "comprehension.functional_1.identity"]
+    assert remote.json()["mission_config"]["PrivateProfile"]["FirstName"] == "Tomás"
+
+    with SessionLocal() as db:
+        profile = db.get(DeviceMissionProfile, device_id)
+        assert profile is not None
+        assert profile.birth_date == "2010-08-23"

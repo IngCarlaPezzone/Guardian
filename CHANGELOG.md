@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- Incorpora Mission System v2: una misión por disparo, rotación global persistente y selección por habilidad.
+- Agrega Comprensión funcional Nivel 1 y perfil privado por dispositivo para las preguntas personales.
+- Amplía RemoteConfig y telemetría con identificadores estables de categoría, nivel, habilidad y variante.
+
 ## 0.2.0 - 2026-08-08
 
 - Agrega Guardian Server local con FastAPI, PostgreSQL, migraciones y Admin web.

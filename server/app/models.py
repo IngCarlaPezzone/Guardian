@@ -47,6 +47,7 @@ class Device(Base):
     configuration: Mapped["DeviceConfiguration"] = relationship(back_populates="device", uselist=False)
     events: Mapped[list["DeviceEvent"]] = relationship(back_populates="device")
     commands: Mapped[list["DeviceCommand"]] = relationship(back_populates="device")
+    mission_profile: Mapped["DeviceMissionProfile | None"] = relationship(back_populates="device", uselist=False)
 
 
 class DeviceConfiguration(Base):
@@ -56,10 +57,26 @@ class DeviceConfiguration(Base):
     device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"), unique=True, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     interval_seconds: Mapped[int] = mapped_column(Integer, default=900, nullable=False)
+    mission_config: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 
     device: Mapped[Device] = relationship(back_populates="configuration")
+
+
+class DeviceMissionProfile(Base):
+    __tablename__ = "device_mission_profiles"
+
+    device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"), primary_key=True)
+    preferred_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    middle_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    birth_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
+
+    device: Mapped[Device] = relationship(back_populates="mission_profile")
 
 
 class Release(Base):
