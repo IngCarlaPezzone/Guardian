@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Misiones - Guardian Admin</title>
+  <link rel="stylesheet" href="/admin/static/admin.css">
+</head>
+<body>
+  <header><h1>Guardian Admin</h1><nav class="header-actions"><a href="/admin/">Dispositivos</a></nav></header>
+  <main><section><h2>Misiones — {{ device.display_name or device.machine_name }}</h2>
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <form method="post" action="/admin/devices/{{ device.id }}/config" class="card">
+      <input type="hidden" name="display_name" value="{{ device.display_name or '' }}">
+      <input type="hidden" name="interval_minutes" value="{{ (device.configuration.interval_seconds // 60) if device.configuration else 15 }}">
+      <input type="hidden" name="missions_submitted" value="1">
+      {% for category, level_id, title, tooltip, skills in levels %}
+      {% set selected_count = skills | selectattr('0', 'in', selected) | list | length %}
+      <fieldset class="mission-level" data-level="{{ level_id }}">
+        <legend><label><input type="checkbox" class="level-toggle" {{ 'checked' if selected_count == skills|length else '' }} data-indeterminate="{{ 'true' if selected_count and selected_count != skills|length else 'false' }}"> {{ title }}</label> <span class="info" title="{{ tooltip }}" aria-label="{{ tooltip }}">ⓘ</span></legend>
+        {% for key, label, skill_tooltip in skills %}
+        <label class="mission-skill"><input type="checkbox" name="enabled_skills" value="{{ key }}" {{ 'checked' if key in selected else '' }}> {{ label }}</label> <span class="info" title="{{ skill_tooltip }}" aria-label="{{ skill_tooltip }}">ⓘ</span><br>
+        {% endfor %}
+      </fieldset>
+      {% endfor %}
+      <fieldset><legend>Perfil para misiones</legend>
+        <label>Nombre habitual<input name="preferred_name" value="{{ profile.preferred_name if profile else '' }}"></label>
+        <label>Nombre<input name="first_name" value="{{ profile.first_name if profile else '' }}"></label>
+        <label>Segundo nombre<input name="middle_name" value="{{ profile.middle_name if profile else '' }}"></label>
+        <label>Apellido<input name="last_name" value="{{ profile.last_name if profile else '' }}"></label>
+        <label>Fecha de nacimiento<input name="birth_date" type="date" value="{{ profile.birth_date if profile else '' }}"></label>
+      </fieldset>
+      <button>Guardar misiones y perfil</button>
+    </form>
+  </section></main>
+  <script>
+    document.querySelectorAll('.mission-level').forEach(function(level) {
+      var parent = level.querySelector('.level-toggle');
+      var children = level.querySelectorAll('input[name="enabled_skills"]');
+      function sync() { var checked = Array.prototype.filter.call(children, function(x) { return x.checked; }).length; parent.checked = checked === children.length; parent.indeterminate = checked > 0 && checked < children.length; }
+      parent.checked = parent.checked; parent.indeterminate = parent.dataset.indeterminate === 'true';
+      parent.addEventListener('change', function() { children.forEach(function(x) { x.checked = parent.checked; }); sync(); });
+      children.forEach(function(x) { x.addEventListener('change', sync); });
+    });
+  </script>
+</body>
+</html>

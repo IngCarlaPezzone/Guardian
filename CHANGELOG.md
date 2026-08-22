@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.1
+
+- Cierra la iteración Mission System v2, validada manualmente en PC TEST y lista para probar actualización remota en PC TEST.
+- Incorpora Comprensión funcional Nivel 1 y skills configurables de Matemática y Comprensión, con una misión por disparo y rotación global persistente.
+- Añade perfil privado para misiones y telemetría por categoría, nivel, skill y variante.
+- Corrige el ajuste visual de preguntas y respuestas largas en la ventana de misión.
+- Impide guardar una configuración de misiones sin habilidades habilitadas.
+- Evita eventos repetidos de `MissionUnavailable` mientras no cambie el estado efectivo.
+- Pendiente antes del rollout productivo: validar updater/release real en PC TEST. Deuda técnica/UI: modernizar Configurar misiones y LockWindow, mejorar tooltips y respuestas largas, aclarar “Pausado” y revisar `missionId` / `mission_id`.
+
+## 0.4.0
+
+- Incorpora Mission System v2: una misión por disparo, rotación global persistente y selección por habilidad.
+- Agrega Comprensión funcional Nivel 1 y perfil privado por dispositivo para las preguntas personales.
+- Amplía RemoteConfig y telemetría con identificadores estables de categoría, nivel, habilidad y variante.
+
 ## 0.2.0 - 2026-08-08
 
 - Agrega Guardian Server local con FastAPI, PostgreSQL, migraciones y Admin web.

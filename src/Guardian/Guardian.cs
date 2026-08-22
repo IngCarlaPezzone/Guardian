@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -183,6 +184,8 @@ namespace Guardian
         public string AdminUsername { get; set; }
         public string AdminPasswordSha256 { get; set; }
         public int MaxSolvedMissionsBeforeAutoExit { get; set; }
+        public MissionConfig MissionConfig { get; set; }
+        public MissionRotationState MissionRotationState { get; set; }
 
         public static string ConfigPath
         {
@@ -220,7 +223,10 @@ namespace Guardian
                 ResumeMediaAfterMission = false,
                 AdminUsername = "admin",
                 AdminPasswordSha256 = AdminAuth.HashPassword("guardian"),
-                MaxSolvedMissionsBeforeAutoExit = 3
+                MaxSolvedMissionsBeforeAutoExit = 3,
+                // Preserve the Stage 1 behavior for existing installations. Comprehension is opt-in.
+                MissionConfig = MissionConfig.Default(),
+                MissionRotationState = new MissionRotationState()
             };
         }
 
@@ -259,6 +265,12 @@ namespace Guardian
             if (string.IsNullOrWhiteSpace(loaded.AdminUsername)) loaded.AdminUsername = defaults.AdminUsername;
             if (string.IsNullOrWhiteSpace(loaded.AdminPasswordSha256)) loaded.AdminPasswordSha256 = defaults.AdminPasswordSha256;
             if (loaded.MaxSolvedMissionsBeforeAutoExit < 0) loaded.MaxSolvedMissionsBeforeAutoExit = defaults.MaxSolvedMissionsBeforeAutoExit;
+            if (loaded.MissionConfig == null) loaded.MissionConfig = MissionConfig.Default();
+            if (loaded.MissionConfig.EnabledSkills == null) loaded.MissionConfig.EnabledSkills = MissionConfig.Default().EnabledSkills;
+            if (loaded.MissionConfig.PrivateProfile == null) loaded.MissionConfig.PrivateProfile = new PrivateMissionProfile();
+            if (loaded.MissionRotationState == null) loaded.MissionRotationState = new MissionRotationState();
+            if (loaded.MissionRotationState.UsedSkillsInCycle == null) loaded.MissionRotationState.UsedSkillsInCycle = new List<string>();
+            if (loaded.MissionRotationState.LastVariantBySkill == null) loaded.MissionRotationState.LastVariantBySkill = new Dictionary<string, string>();
             EnsureBooleanDefaults(loaded, File.ReadAllText(ConfigPath, Encoding.UTF8));
             loaded.Save();
             return loaded;
@@ -862,7 +874,8 @@ namespace Guardian
         private readonly EventLogger _logger;
         private readonly DispatcherTimer _timer;
         private readonly DispatcherTimer _remoteConfigTimer;
-        private readonly MissionGenerator _missionGenerator = new MissionGenerator();
+        private readonly MissionCatalog _missionCatalog = new MissionCatalog();
+        private readonly MissionSelector _missionSelector;
         private readonly UsageCounter _counter;
         private bool _sessionUnlocked = true;
         private bool _suspended;
@@ -871,6 +884,7 @@ namespace Guardian
         private MediaInterruptionSession _mediaSession;
         private GuardianTray _tray;
         private bool _monitoringEnabled;
+        private readonly MissionUnavailableDeduplicator _missionUnavailableDeduplicator = new MissionUnavailableDeduplicator();
 
         public Window MainWindow { get; private set; }
 
@@ -878,6 +892,7 @@ namespace Guardian
         {
             _config = config;
             _logger = logger;
+            _missionSelector = new MissionSelector(config, _missionCatalog);
             _counter = new UsageCounter(config.EffectiveIntervalSeconds);
             MainWindow = new StatusWindow(config);
             MainWindow.Closing += delegate(object sender, System.ComponentModel.CancelEventArgs e)
@@ -1012,19 +1027,26 @@ namespace Guardian
 
         private void ShowMission(MissionTrigger trigger)
         {
-            _missionActive = true;
-            var mission = _missionGenerator.Next(_config.Difficulty);
-            _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger);
-            _logger.Log("MissionStarted", new Dictionary<string, object>
+            var mission = _missionSelector.Next();
+            var availabilitySignature = MissionAvailabilitySignature();
+            if (mission == null)
             {
-                { "missionId", mission.Id },
-                { "prompt", mission.Prompt },
-                { "elapsedSeconds", _counter.ElapsedSeconds },
-                { "trigger", trigger.ToString().ToLowerInvariant() }
-            });
+                if (_missionUnavailableDeduplicator.ShouldLog(false, availabilitySignature)) _logger.Log("MissionUnavailable", new Dictionary<string, object>
+                {
+                    { "reason", "no_effective_skills" }
+                });
+                return;
+            }
+            _missionUnavailableDeduplicator.ShouldLog(true, availabilitySignature);
+            _missionActive = true;
+            _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger);
+            var startedPayload = MissionTelemetry.Payload(mission, 1);
+            startedPayload["elapsedSeconds"] = _counter.ElapsedSeconds;
+            startedPayload["trigger"] = trigger.ToString().ToLowerInvariant();
+            _logger.Log("MissionStarted", startedPayload);
             _logger.Log("DeviceLocked", new Dictionary<string, object> { { "missionId", mission.Id } });
 
-            _lockWindow = new LockWindow(mission, _missionGenerator, _config, _logger);
+            _lockWindow = new LockWindow(mission, _config, _logger);
             _lockWindow.UnlockRequested += delegate
             {
                 _counter.Reset();
@@ -1044,6 +1066,14 @@ namespace Guardian
             };
             _lockWindow.Show();
             _lockWindow.Activate();
+        }
+
+        private string MissionAvailabilitySignature()
+        {
+            var missionConfig = _config.MissionConfig;
+            var skills = missionConfig == null || missionConfig.EnabledSkills == null ? "" : string.Join("|", missionConfig.EnabledSkills.ToArray());
+            var profile = missionConfig == null ? null : missionConfig.PrivateProfile;
+            return skills + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.PreferredName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.FirstName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.LastName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.BirthDate));
         }
 
         private void OnRemoteConfigTick(object sender, EventArgs e)
@@ -1137,13 +1167,21 @@ namespace Guardian
                 _config.IntervalSeconds = remote.interval_seconds;
                 _config.UseTestInterval = false;
                 _config.RemoteConfigVersion = remote.version;
+                if (remote.mission_config != null)
+                {
+                    _config.MissionConfig = remote.mission_config;
+                    if (_config.MissionConfig.EnabledSkills == null) _config.MissionConfig.EnabledSkills = new List<string>();
+                    if (_config.MissionConfig.PrivateProfile == null) _config.MissionConfig.PrivateProfile = new PrivateMissionProfile();
+                }
                 _config.Save();
                 _counter.UpdateInterval(_config.EffectiveIntervalSeconds);
                 _logger.Log("RemoteConfigApplied", new Dictionary<string, object>
                 {
                     { "oldIntervalSeconds", oldInterval },
                     { "newIntervalSeconds", _config.EffectiveIntervalSeconds },
-                    { "configVersion", remote.version }
+                    { "configVersion", remote.version },
+                    { "missionConfigChanged", remote.mission_config != null },
+                    { "profileConfigured", remote.mission_config != null && remote.mission_config.PrivateProfile != null && remote.mission_config.PrivateProfile.IsConfigured }
                 });
             }));
         }
@@ -1673,6 +1711,7 @@ namespace Guardian
         public int version { get; set; }
         public int interval_seconds { get; set; }
         public string updated_at { get; set; }
+        public MissionConfig mission_config { get; set; }
     }
 
     public sealed class RegisterDeviceResponse
@@ -1916,7 +1955,6 @@ namespace Guardian
 
     public sealed class LockWindow : Window
     {
-        private readonly MissionGenerator _missionGenerator;
         private readonly GuardianConfig _config;
         private readonly EventLogger _logger;
         private readonly Random _random = new Random();
@@ -1931,15 +1969,14 @@ namespace Guardian
         private Mission _mission;
         private bool _canExit;
         private bool _unlockRequested;
-        private int _solvedCount;
+        private int _attempt = 1;
 
         public event Action UnlockRequested;
         public event Action AdminShutdownRequested;
 
-        public LockWindow(Mission mission, MissionGenerator missionGenerator, GuardianConfig config, EventLogger logger)
+        public LockWindow(Mission mission, GuardianConfig config, EventLogger logger)
         {
             _mission = mission;
-            _missionGenerator = missionGenerator;
             _config = config;
             _logger = logger;
             Title = "Guardian";
@@ -1958,7 +1995,7 @@ namespace Guardian
 
             var card = new Border
             {
-                MaxWidth = 560,
+                MaxWidth = 720,
                 Padding = new Thickness(34),
                 CornerRadius = new CornerRadius(8),
                 Background = new SolidColorBrush(Color.FromRgb(245, 247, 250)),
@@ -1993,13 +2030,15 @@ namespace Guardian
                 FontSize = 42,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 640,
                 Margin = new Thickness(0, 0, 0, 18)
             };
             panel.Children.Add(_promptText);
             _answerBox = new TextBox
             {
                 FontSize = 30,
-                Width = 180,
+                Width = 460,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Margin = new Thickness(0, 0, 0, 14)
@@ -2152,17 +2191,14 @@ namespace Guardian
 
         private void CheckAnswer()
         {
-            int answer;
-            var result = MissionValidator.Validate(_answerBox.Text, _mission.Answer, out answer);
+            var result = MissionValidator.Validate(_answerBox.Text, _mission);
             if (result == MissionAnswerResult.Invalid)
             {
-                _feedback.Text = "Escrib\u00ed un n\u00famero.";
-                _logger.Log("MissionFailed", new Dictionary<string, object>
-                {
-                    { "missionId", _mission.Id },
-                    { "reason", "invalid_input" },
-                    { "input", _answerBox.Text }
-                });
+                _feedback.Text = "Revis\u00e1 la respuesta e intent\u00e1 de nuevo.";
+                var invalidPayload = MissionTelemetry.Payload(_mission, _attempt);
+                invalidPayload["reason"] = "invalid_input";
+                _logger.Log("MissionFailed", invalidPayload);
+                _attempt++;
                 return;
             }
 
@@ -2170,65 +2206,22 @@ namespace Guardian
             {
                 _feedback.Text = "Todav\u00eda no. Prob\u00e1 de nuevo.";
                 _answerBox.SelectAll();
-                _logger.Log("MissionFailed", new Dictionary<string, object>
-                {
-                    { "missionId", _mission.Id },
-                    { "reason", "wrong_answer" },
-                    { "input", answer }
-                });
+                var failedPayload = MissionTelemetry.Payload(_mission, _attempt);
+                failedPayload["reason"] = "wrong_answer";
+                _logger.Log("MissionFailed", failedPayload);
+                _attempt++;
                 return;
             }
 
-            _solvedCount++;
-            _logger.Log("MissionSolved", new Dictionary<string, object>
-            {
-                { "missionId", _mission.Id },
-                { "answer", _mission.Answer },
-                { "solvedCount", _solvedCount }
-            });
+            _logger.Log("MissionSolved", MissionTelemetry.Payload(_mission, _attempt));
 
             if (!_canExit)
             {
                 _canExit = true;
                 _exitButton.Visibility = Visibility.Visible;
-                _logger.Log("ExitAvailable", new Dictionary<string, object>
-                {
-                    { "missionId", _mission.Id },
-                    { "solvedCount", _solvedCount }
-                });
+                _logger.Log("ExitAvailable", MissionTelemetry.Payload(_mission, _attempt));
             }
-
-            if (_config.MaxSolvedMissionsBeforeAutoExit > 0 && _solvedCount >= _config.MaxSolvedMissionsBeforeAutoExit)
-            {
-                _logger.Log("AutoExitAfterSolvedMissions", new Dictionary<string, object>
-                {
-                    { "missionId", _mission.Id },
-                    { "solvedCount", _solvedCount },
-                    { "limit", _config.MaxSolvedMissionsBeforeAutoExit }
-                });
-                RequestUnlock();
-                return;
-            }
-
-            _feedback.Foreground = new SolidColorBrush(Color.FromRgb(22, 101, 52));
-            _feedback.Text = "Bien. Nueva misi\u00f3n lista.";
-            LoadNextMission();
-        }
-
-        private void LoadNextMission()
-        {
-            _mission = _missionGenerator.Next(_config.Difficulty);
-            _promptText.Text = _mission.Prompt;
-            _answerBox.Text = "";
-            _answerBox.Focus();
-            Keyboard.Focus(_answerBox);
-            _logger.Log("MissionStarted", new Dictionary<string, object>
-            {
-                { "missionId", _mission.Id },
-                { "prompt", _mission.Prompt },
-                { "source", "continued_play" },
-                { "solvedCount", _solvedCount }
-            });
+            RequestUnlock();
         }
 
         private void RequestUnlock()
@@ -2238,7 +2231,7 @@ namespace Guardian
             _logger.Log("ExitClicked", new Dictionary<string, object>
             {
                 { "missionId", _mission.Id },
-                { "solvedCount", _solvedCount }
+                { "attempt", _attempt }
             });
             if (UnlockRequested != null) UnlockRequested();
             Close();
@@ -2301,6 +2294,17 @@ namespace Guardian
 
     public static class MissionValidator
     {
+        public static MissionAnswerResult Validate(string input, Mission mission)
+        {
+            if (string.IsNullOrWhiteSpace(input) || mission == null || mission.AcceptedAnswers == null) return MissionAnswerResult.Invalid;
+            var normalized = MissionText.Normalize(input);
+            foreach (var answer in mission.AcceptedAnswers)
+            {
+                if (normalized == MissionText.Normalize(answer)) return MissionAnswerResult.Correct;
+            }
+            return MissionAnswerResult.Wrong;
+        }
+
         public static MissionAnswerResult Validate(string input, int expected, out int answer)
         {
             if (!int.TryParse((input ?? "").Trim(), out answer)) return MissionAnswerResult.Invalid;
@@ -2697,7 +2701,7 @@ namespace Guardian
         }
     }
 
-    public sealed class Mission
+    public sealed class LegacyMission
     {
         public string Id { get; set; }
         public string Prompt { get; set; }
@@ -2705,11 +2709,11 @@ namespace Guardian
         public string Operation { get; set; }
     }
 
-    public sealed class MissionGenerator
+    public sealed class LegacyMissionGenerator
     {
         private readonly Random _random = new Random();
 
-        public Mission Next(string difficulty)
+        public LegacyMission Next(string difficulty)
         {
             var kind = _random.Next(0, 3);
             if (kind == 0) return Sum();
@@ -2717,30 +2721,30 @@ namespace Guardian
             return Multiply();
         }
 
-        private Mission Sum()
+        private LegacyMission Sum()
         {
             var a = _random.Next(20, 100);
             var b = _random.Next(10, 90);
             return Create(a + " + " + b + " = ?", a + b, "sum");
         }
 
-        private Mission Subtract()
+        private LegacyMission Subtract()
         {
             var a = _random.Next(40, 130);
             var b = _random.Next(10, Math.Min(90, a));
             return Create(a + " - " + b + " = ?", a - b, "subtract");
         }
 
-        private Mission Multiply()
+        private LegacyMission Multiply()
         {
             var a = _random.Next(3, 13);
             var b = _random.Next(3, 13);
             return Create(a + " x " + b + " = ?", a * b, "multiply");
         }
 
-        private Mission Create(string prompt, int answer, string operation)
+        private LegacyMission Create(string prompt, int answer, string operation)
         {
-            return new Mission
+            return new LegacyMission
             {
                 Id = Guid.NewGuid().ToString("N"),
                 Prompt = prompt,
@@ -2958,6 +2962,8 @@ namespace Guardian
             var failures = new List<string>();
             CheckMissionGenerator(failures);
             CheckMissionValidator(failures);
+            CheckMissionRotationAndComprehension(failures);
+            CheckMissionUnavailableDeduplication(failures);
             CheckAdminAuth(failures);
             CheckMediaPolicy(failures);
             CheckUsageCounter(failures);
@@ -3031,14 +3037,48 @@ namespace Guardian
 
         private static void CheckMissionGenerator(List<string> failures)
         {
-            var generator = new MissionGenerator();
+            var catalog = new MissionCatalog();
             for (var i = 0; i < 30; i++)
             {
-                var mission = generator.Next("9-11");
+                var mission = catalog.Generate("math.basic_operations_1.addition", new PrivateMissionProfile(), new Dictionary<string, string>(), new Random(i));
                 if (string.IsNullOrWhiteSpace(mission.Id)) failures.Add("mission id missing");
                 if (string.IsNullOrWhiteSpace(mission.Prompt)) failures.Add("mission prompt missing");
-                if (mission.Answer < 0 || mission.Answer > 300) failures.Add("mission answer outside expected range");
+                if (mission.AcceptedAnswers == null || mission.AcceptedAnswers.Count != 1) failures.Add("math answer missing");
             }
+        }
+
+        private static void CheckMissionRotationAndComprehension(List<string> failures)
+        {
+            var originalClock = GuardianClock.LocalNowProvider;
+            try
+            {
+                GuardianClock.LocalNowProvider = delegate { return new DateTime(2026, 8, 22, 10, 0, 0); };
+                var config = GuardianConfig.Default();
+                config.MissionConfig.EnabledSkills = new List<string> { "math.basic_operations_1.subtraction", "comprehension.functional_1.current_date", "comprehension.functional_1.calendar" };
+                var selector = new MissionSelector(config, new MissionCatalog());
+                var seen = new HashSet<string>();
+                for (var i = 0; i < 3; i++) seen.Add(selector.Next().SkillId);
+                if (seen.Count != 3) failures.Add("global skill rotation repeated before cycle completion");
+                var profile = new PrivateMissionProfile { PreferredName = "Tomi", FirstName = "Tomás", MiddleName = "Luis", LastName = "Pérez", BirthDate = "2010-08-23" };
+                var identity = new MissionCatalog().Generate("comprehension.functional_1.identity", profile, new Dictionary<string, string>(), new Random(2));
+                if (MissionText.Normalize(" TOMÁS ") != MissionText.Normalize("tomas")) failures.Add("text normalization failed");
+                if (identity == null || identity.AcceptedAnswers.Count == 0) failures.Add("identity mission missing answers");
+                var age = new MissionCatalog().Generate("comprehension.functional_1.age_birth", profile, new Dictionary<string, string>(), new Random(0));
+                if (age == null) failures.Add("birth profile should generate mission");
+                var date = new MissionCatalog().Generate("comprehension.functional_1.current_date", profile, new Dictionary<string, string>(), new Random(1));
+                if (date == null) failures.Add("current date mission missing");
+            }
+            finally { GuardianClock.LocalNowProvider = originalClock; }
+        }
+
+        private static void CheckMissionUnavailableDeduplication(List<string> failures)
+        {
+            var deduplicator = new MissionUnavailableDeduplicator();
+            if (!deduplicator.ShouldLog(false, "no-skills")) failures.Add("first unavailable state should log");
+            if (deduplicator.ShouldLog(false, "no-skills")) failures.Add("unchanged unavailable state should not log repeatedly");
+            deduplicator.ShouldLog(true, "has-skills");
+            if (!deduplicator.ShouldLog(false, "no-skills")) failures.Add("unavailable state after recovery should log again");
+            if (!deduplicator.ShouldLog(false, "different-config")) failures.Add("changed unavailable configuration should log again");
         }
 
         private static void CheckConfig(List<string> failures)

@@ -69,7 +69,7 @@
           </dl>
         </div>
         {% endif %}
-        <p><a href="/admin/devices/{{ device.id }}/activity">Ver actividad</a></p>
+        <p><a href="/admin/devices/{{ device.id }}/activity">Ver actividad</a> · <a href="/admin/devices/{{ device.id }}/missions">Configurar misiones</a></p>
         <form method="post" action="/admin/devices/{{ device.id }}/config" class="inline-form">
           <label>Nombre visible<input name="display_name" value="{{ device.display_name or '' }}"></label>
           <label>Intervalo (min)<input name="interval_minutes" type="number" min="1" max="240" value="{{ (device.configuration.interval_seconds // 60) if device.configuration else 15 }}"></label>

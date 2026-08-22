@@ -74,6 +74,8 @@ El servidor deduplica por `event_id`. El cliente elimina de pendientes solo los 
 
 Desde `0.3.1`, el acceso local a `events-pending.jsonl` usa locking interproceso y los errores de telemetria no deben cerrar Guardian.
 
+Desde `0.4.0`, los eventos de misión nuevos incluyen `mission_id`, `category_id`, `level_id`, `skill_id`, `variant_id` y `attempt`. Las respuestas ingresadas y los valores del perfil privado no se registran en `events.jsonl`, `events-pending.jsonl` ni se envían al servidor.
+
 ## Configuracion Remota
 
 Si `GuardianServerUrl` esta configurado, Guardian consulta la configuracion remota de Etapa 0.
