@@ -465,3 +465,23 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
         profile = db.get(DeviceMissionProfile, device_id)
         assert profile is not None
         assert profile.birth_date == "2010-08-23"
+
+
+def test_admin_rejects_zero_enabled_mission_skills_without_saving():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc2"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Zero-Skills-Test-PC", token_hash=hash_secret("zero-skills-token"), client_version="0.4.0", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=4, mission_config={"enabledSkills": ["math.basic_operations_1.subtraction"]}))
+        db.commit()
+
+    response = client.post(f"/admin/devices/{device_id}/config", data={
+        "display_name": "Zero Skills", "interval_minutes": "15", "missions_submitted": "1",
+    })
+    assert response.status_code == 422
+    assert "Seleccioná al menos una habilidad antes de guardar." in response.text
+
+    with SessionLocal() as db:
+        config = db.query(DeviceConfiguration).filter(DeviceConfiguration.device_id == device_id).one()
+        assert config.mission_config == {"enabledSkills": ["math.basic_operations_1.subtraction"]}
+        assert config.version == 4

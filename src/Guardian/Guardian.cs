@@ -884,6 +884,7 @@ namespace Guardian
         private MediaInterruptionSession _mediaSession;
         private GuardianTray _tray;
         private bool _monitoringEnabled;
+        private readonly MissionUnavailableDeduplicator _missionUnavailableDeduplicator = new MissionUnavailableDeduplicator();
 
         public Window MainWindow { get; private set; }
 
@@ -1027,14 +1028,16 @@ namespace Guardian
         private void ShowMission(MissionTrigger trigger)
         {
             var mission = _missionSelector.Next();
+            var availabilitySignature = MissionAvailabilitySignature();
             if (mission == null)
             {
-                _logger.Log("MissionUnavailable", new Dictionary<string, object>
+                if (_missionUnavailableDeduplicator.ShouldLog(false, availabilitySignature)) _logger.Log("MissionUnavailable", new Dictionary<string, object>
                 {
                     { "reason", "no_effective_skills" }
                 });
                 return;
             }
+            _missionUnavailableDeduplicator.ShouldLog(true, availabilitySignature);
             _missionActive = true;
             _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger);
             var startedPayload = MissionTelemetry.Payload(mission, 1);
@@ -1063,6 +1066,14 @@ namespace Guardian
             };
             _lockWindow.Show();
             _lockWindow.Activate();
+        }
+
+        private string MissionAvailabilitySignature()
+        {
+            var missionConfig = _config.MissionConfig;
+            var skills = missionConfig == null || missionConfig.EnabledSkills == null ? "" : string.Join("|", missionConfig.EnabledSkills.ToArray());
+            var profile = missionConfig == null ? null : missionConfig.PrivateProfile;
+            return skills + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.PreferredName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.FirstName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.LastName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.BirthDate));
         }
 
         private void OnRemoteConfigTick(object sender, EventArgs e)
@@ -1984,7 +1995,7 @@ namespace Guardian
 
             var card = new Border
             {
-                MaxWidth = 560,
+                MaxWidth = 720,
                 Padding = new Thickness(34),
                 CornerRadius = new CornerRadius(8),
                 Background = new SolidColorBrush(Color.FromRgb(245, 247, 250)),
@@ -2019,13 +2030,15 @@ namespace Guardian
                 FontSize = 42,
                 FontWeight = FontWeights.Bold,
                 TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 640,
                 Margin = new Thickness(0, 0, 0, 18)
             };
             panel.Children.Add(_promptText);
             _answerBox = new TextBox
             {
                 FontSize = 30,
-                Width = 180,
+                Width = 460,
                 HorizontalContentAlignment = HorizontalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Margin = new Thickness(0, 0, 0, 14)
@@ -2950,6 +2963,7 @@ namespace Guardian
             CheckMissionGenerator(failures);
             CheckMissionValidator(failures);
             CheckMissionRotationAndComprehension(failures);
+            CheckMissionUnavailableDeduplication(failures);
             CheckAdminAuth(failures);
             CheckMediaPolicy(failures);
             CheckUsageCounter(failures);
@@ -3055,6 +3069,16 @@ namespace Guardian
                 if (date == null) failures.Add("current date mission missing");
             }
             finally { GuardianClock.LocalNowProvider = originalClock; }
+        }
+
+        private static void CheckMissionUnavailableDeduplication(List<string> failures)
+        {
+            var deduplicator = new MissionUnavailableDeduplicator();
+            if (!deduplicator.ShouldLog(false, "no-skills")) failures.Add("first unavailable state should log");
+            if (deduplicator.ShouldLog(false, "no-skills")) failures.Add("unchanged unavailable state should not log repeatedly");
+            deduplicator.ShouldLog(true, "has-skills");
+            if (!deduplicator.ShouldLog(false, "no-skills")) failures.Add("unavailable state after recovery should log again");
+            if (!deduplicator.ShouldLog(false, "different-config")) failures.Add("changed unavailable configuration should log again");
         }
 
         private static void CheckConfig(List<string> failures)

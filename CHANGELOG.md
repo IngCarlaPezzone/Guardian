@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- Corrige el ajuste visual de preguntas y respuestas largas en la ventana de misión.
+- Impide guardar una configuración de misiones sin habilidades habilitadas.
+- Evita eventos repetidos de `MissionUnavailable` mientras no cambie el estado efectivo.
+
 ## 0.4.0
 
 - Incorpora Mission System v2: una misión por disparo, rotación global persistente y selección por habilidad.

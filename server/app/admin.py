@@ -173,6 +173,22 @@ def device_guardian_state(device: Device) -> str:
     return "active" if device.monitoring_enabled else "paused"
 
 
+def render_mission_config(request: Request, device: Device, selected: list[str] | None = None, error: str | None = None, status_code: int = 200):
+    if selected is None:
+        selected = ((device.configuration.mission_config if device.configuration else {}) or {}).get(
+            "enabledSkills",
+            ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"],
+        )
+    return templates.TemplateResponse("missions.html", {
+        "request": request,
+        "device": device,
+        "levels": MISSION_LEVELS,
+        "selected": selected,
+        "profile": device.mission_profile,
+        "error": error,
+    }, status_code=status_code)
+
+
 @router.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     devices = db.query(Device).order_by(Device.registered_at.desc()).all()
@@ -295,13 +311,19 @@ def logout():
 
 
 @router.post("/devices/{device_id}/config")
-def update_device_config(device_id: str, display_name: str = Form(""), interval_minutes: int = Form(...), missions_submitted: str = Form(""), enabled_skills: list[str] = Form([]), preferred_name: str = Form(""), first_name: str = Form(""), middle_name: str = Form(""), last_name: str = Form(""), birth_date: str = Form(""), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
+def update_device_config(device_id: str, request: Request, display_name: str = Form(""), interval_minutes: int = Form(...), missions_submitted: str = Form(""), enabled_skills: list[str] = Form([]), preferred_name: str = Form(""), first_name: str = Form(""), middle_name: str = Form(""), last_name: str = Form(""), birth_date: str = Form(""), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
     seconds = int(interval_minutes) * 60
     if not valid_interval(seconds):
         raise HTTPException(status_code=422, detail="interval out of range")
+    selected = None
+    if missions_submitted == "1":
+        valid_skills = {key for _, _, _, _, skills in MISSION_LEVELS for key, _, _ in skills}
+        selected = [key for key in enabled_skills if key in valid_skills]
+        if not selected:
+            return render_mission_config(request, device, selected=[], error="Seleccioná al menos una habilidad antes de guardar.", status_code=422)
     device.display_name = display_name.strip() or None
     config = device.configuration
     changed = False
@@ -313,8 +335,6 @@ def update_device_config(device_id: str, display_name: str = Form(""), interval_
             config.interval_seconds = seconds
             changed = True
     if missions_submitted == "1":
-        valid_skills = {key for _, _, _, _, skills in MISSION_LEVELS for key, _, _ in skills}
-        selected = [key for key in enabled_skills if key in valid_skills]
         mission_config = config.mission_config or {}
         if mission_config.get("enabledSkills") != selected:
             config.mission_config = {"enabledSkills": selected}
@@ -346,8 +366,7 @@ def mission_config_page(device_id: str, request: Request, db: Session = Depends(
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
-    selected = ((device.configuration.mission_config if device.configuration else {}) or {}).get("enabledSkills", ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"])
-    return templates.TemplateResponse("missions.html", {"request": request, "device": device, "levels": MISSION_LEVELS, "selected": selected, "profile": device.mission_profile})
+    return render_mission_config(request, device)
 
 
 @router.post("/devices/{device_id}/updates")

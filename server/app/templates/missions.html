@@ -9,6 +9,7 @@
 <body>
   <header><h1>Guardian Admin</h1><nav class="header-actions"><a href="/admin/">Dispositivos</a></nav></header>
   <main><section><h2>Misiones — {{ device.display_name or device.machine_name }}</h2>
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
     <form method="post" action="/admin/devices/{{ device.id }}/config" class="card">
       <input type="hidden" name="display_name" value="{{ device.display_name or '' }}">
       <input type="hidden" name="interval_minutes" value="{{ (device.configuration.interval_seconds // 60) if device.configuration else 15 }}">

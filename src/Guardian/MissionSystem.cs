@@ -71,6 +71,29 @@ namespace Guardian
         }
     }
 
+    public sealed class MissionUnavailableDeduplicator
+    {
+        private bool _unavailable;
+        private string _signature;
+
+        public bool ShouldLog(bool hasAvailableMission, string availabilitySignature)
+        {
+            if (hasAvailableMission)
+            {
+                _unavailable = false;
+                _signature = null;
+                return false;
+            }
+            if (!_unavailable || !string.Equals(_signature, availabilitySignature ?? "", StringComparison.Ordinal))
+            {
+                _unavailable = true;
+                _signature = availabilitySignature ?? "";
+                return true;
+            }
+            return false;
+        }
+    }
+
     public sealed class MissionSelector
     {
         private readonly GuardianConfig _config; private readonly MissionCatalog _catalog; private readonly Random _random = new Random();
