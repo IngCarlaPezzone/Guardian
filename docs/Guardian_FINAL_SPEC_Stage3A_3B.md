@@ -299,7 +299,7 @@ Cada dispositivo debe ser una card compacta.
 
 Ejemplo:
 
-**Dispositivo de ejemplo**  
+**Dispositivo de ejemplo**<br>
 `DESKTOP-OBS41NQ`
 
 El `display_name` es principal.
@@ -440,18 +440,18 @@ Ejemplo conceptual:
 
 **Matemática**
 
-**Operaciones básicas** ⓘ  
+**Operaciones básicas** ⓘ<br>
 ☑ Sumas ☑ Restas ☑ Multiplicaciones
 
 **Comprensión**
 
 **Comprensión funcional** ⓘ
 
-☑ Identidad  
-☑ Edad y nacimiento  
-☑ Fecha actual  
-☑ Relaciones temporales  
-☑ Calendario  
+☑ Identidad<br>
+☑ Edad y nacimiento<br>
+☑ Fecha actual<br>
+☑ Relaciones temporales<br>
+☑ Calendario<br>
 ☑ Estaciones
 
 En desktop, skills preferentemente en grid de 2–3 columnas cuando haya espacio.
@@ -495,7 +495,7 @@ No mostrar permanentemente cinco inputs gigantes.
 
 Mostrar card compacta:
 
-**Perfil para misiones**  
+**Perfil para misiones**<br>
 `Configurado` / `Incompleto`
 
 Acción:
@@ -657,7 +657,7 @@ Para eventos de misión, intentar mostrar resumen humano usando metadata existen
 
 Ejemplo:
 
-**Misión resuelta**  
+**Misión resuelta**<br>
 `Estaciones · 1.er intento`
 
 En lugar de obligar al usuario a interpretar:
