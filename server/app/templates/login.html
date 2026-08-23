@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Guardian Admin</title>
+  <title>{{ admin_title }}</title>
   <link rel="stylesheet" href="/admin/static/admin.css">
 </head>
 <body class="login">
   <main class="login-panel">
-    <h1>Guardian Admin</h1>
+    <h1>{{ admin_title }}</h1>
     <form method="post" action="/admin/login">
       <label>Usuario<input name="username" autocomplete="username" required></label>
       <label>Contrasena<input name="password" type="password" autocomplete="current-password" required></label>

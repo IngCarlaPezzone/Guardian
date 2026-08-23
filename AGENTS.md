@@ -559,3 +559,58 @@ simplicidad
 mantenibilidad
 observabilidad
 ```
+
+## 28. Entornos STG y PROD
+
+Guardian mantiene dos entornos permanentemente aislados:
+
+- **PROD** es el entorno real: base, dispositivos, telemetría y releases reales.
+- **STG** es el entorno de validación: servicios, PostgreSQL/volumen, releases, dispositivos, secretos y configuración exclusivos. Nunca comparte DB, releases ni devices con PROD.
+
+Flujo obligatorio para toda feature:
+
+```text
+FEATURE BRANCH
+↓
+tests/build
+↓
+STG
+↓
+validación server/Admin
+↓
+cliente Guardian TEST contra STG
+↓
+release/updater STG cuando aplique
+↓
+aprobación
+↓
+merge main
+↓
+deploy PROD
+↓
+PC TEST en PROD
+↓
+recién después dispositivo productivo final
+```
+
+Reglas no negociables:
+
+- Nunca desplegar una feature branch sobre PROD para preview visual o exploratorio.
+- Toda migración se prueba primero en STG.
+- Cambios de release/updater se prueban primero en STG cuando sean relevantes.
+- STG usa sólo datos y perfiles ficticios; jamás se copia una DB, evento o perfil de PROD.
+- El dispositivo productivo final nunca es el primer dispositivo de validación y nunca se registra en STG.
+- Los scripts `*-stg.ps1` operan únicamente el proyecto Compose `guardian-stg`; no sustituirlos por scripts de PROD.
+
+### Versionado y promoción
+
+- PROD usa versiones SemVer normales, por ejemplo `0.4.1`.
+- Durante el desarrollo de una feature en STG se usan versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. No representan la numeración de PROD.
+- Nunca usar una versión sin sufijo en STG salvo para reproducir explícitamente una versión PROD existente.
+- Al aprobar una feature en STG, crear una Release Candidate con la próxima versión de PROD: si PROD es `0.4.1`, usar `0.4.2-rc`. Probarla integralmente en STG, incluyendo updater cuando corresponda.
+- Si la RC aprueba, publicar `0.4.2` en PROD. Nunca publicar versiones `-staging-*` ni `-rc` en PROD.
+- El rollout de PROD es obligatorio: **PC TEST → validar operación → dispositivo productivo final**.
+
+### Importación sanitizada de telemetría
+
+`import-prod-telemetry-to-stg.ps1` es la única vía permitida para importar comportamiento de Activity desde PROD hacia STG. Debe mantener origen de sólo lectura y destino exclusivamente STG, verificar ambos entornos y transferir únicamente la whitelist educativa sanitizada. Nunca transferir dispositivos, tokens, perfiles, respuestas, RemoteConfig, comandos, releases ni credenciales.
