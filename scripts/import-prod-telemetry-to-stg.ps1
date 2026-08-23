@@ -29,16 +29,16 @@ $stgEnvironment = if ($stg.ContainsKey("GUARDIAN_ENVIRONMENT")) { $stg["GUARDIAN
 if ($prodEnvironment -ne "PROD" -or $stgEnvironment -ne "STG") { throw "Abortado: no se pudo verificar origen=PROD y destino=STG." }
 if ($prod["DATABASE_URL"] -eq $stg["DATABASE_URL"] -or $prod["POSTGRES_DB"] -eq $stg["POSTGRES_DB"]) { throw "Abortado: PROD y STG no tienen DB inequívocamente distintas." }
 
-$types = @("MissionStarted", "MissionFailed", "MissionSolved")
-if ($IncludeTechnical) { $types += @("Heartbeat", "RemoteConfigApplied", "UpdateCompleted", "MonitoringPaused", "MonitoringResumed", "TriggerMissionCommandReceived", "RemoteMissionTriggered") }
-$typesJson = $types | ConvertTo-Json -Compress
+$includeTechnicalValue = if ($IncludeTechnical) { "1" } else { "0" }
 
 # This command runs only SELECT queries in the existing PROD app container. It emits no device IDs or full payloads.
 $exportCode = @'
 import json, os
 from server.app.db import SessionLocal
 from server.app.models import DeviceEvent
-types = json.loads(os.environ["TELEMETRY_TYPES"])
+types = {"MissionStarted", "MissionFailed", "MissionSolved"}
+if os.environ.get("TELEMETRY_INCLUDE_TECHNICAL") == "1":
+    types.update({"Heartbeat", "RemoteConfigApplied", "UpdateCompleted", "MonitoringPaused", "MonitoringResumed", "TriggerMissionCommandReceived", "RemoteMissionTriggered"})
 limit = int(os.environ["TELEMETRY_LIMIT"])
 safe = {"mission_id", "missionId", "category_id", "categoryId", "level_id", "levelId", "skill_id", "skillId", "variant_id", "variantId", "attempt", "result"}
 with SessionLocal() as db:
@@ -52,7 +52,8 @@ with SessionLocal() as db:
 print(json.dumps({"schema": "prod-telemetry-sanitized-v1", "events": events}, separators=(",", ":")))
 '@
 
-$dataset = & docker compose --env-file $prodEnvPath -f (Join-Path $root "deploy\docker-compose.yml") exec -T -e "TELEMETRY_TYPES=$typesJson" -e "TELEMETRY_LIMIT=$Limit" guardian-app python -c $exportCode
+# Feed Python source through stdin. This avoids PowerShell/Docker argument quoting entirely.
+$dataset = $exportCode | & docker compose --env-file $prodEnvPath -f (Join-Path $root "deploy\docker-compose.yml") exec -T -e "TELEMETRY_INCLUDE_TECHNICAL=$includeTechnicalValue" -e "TELEMETRY_LIMIT=$Limit" guardian-app python -
 if ($LASTEXITCODE -ne 0) { throw "La exportación de sólo lectura desde PROD falló; STG no fue modificado." }
 try { $parsed = $dataset | ConvertFrom-Json } catch { throw "La exportación no produjo un dataset sanitizado válido; STG no fue modificado." }
 if ($parsed.schema -ne "prod-telemetry-sanitized-v1") { throw "Schema de exportación inesperado; STG no fue modificado." }
