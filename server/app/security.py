@@ -12,7 +12,7 @@ from server.app.config import settings
 from server.app.db import get_db
 from server.app.models import AdminUser, Device
 
-SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
+SEMVER_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z][0-9A-Za-z.-]*))?$")
 VALID_UPDATE_STATUSES = {"pending", "acknowledged", "downloading", "installing", "success", "failed", "rolled_back", "cancelled"}
 VALID_DEVICE_COMMAND_STATUSES = {"pending", "acknowledged", "success", "failed"}
 VALID_DEVICE_COMMAND_TYPES = {"pause_monitoring", "resume_monitoring", "trigger_mission_now"}
@@ -42,6 +42,11 @@ def valid_interval(seconds: int) -> bool:
 
 def valid_semver(version: str) -> bool:
     return bool(SEMVER_RE.match(version or ""))
+
+
+def is_prerelease(version: str) -> bool:
+    match = SEMVER_RE.match(version or "")
+    return bool(match and match.group(4))
 
 
 def utcnow():

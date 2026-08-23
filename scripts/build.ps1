@@ -1,3 +1,5 @@
+param([string]$VersionOverride = "")
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -8,7 +10,10 @@ $outDir = Join-Path $root "dist"
 $objDir = Join-Path $root "obj"
 $out = Join-Path $outDir "Guardian.exe"
 $updaterOut = Join-Path $outDir "GuardianUpdater.exe"
-$version = (Get-Content -Raw -Path (Join-Path $root "VERSION")).Trim()
+$version = if ($VersionOverride) { $VersionOverride } else { (Get-Content -Raw -Path (Join-Path $root "VERSION")).Trim() }
+if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$') {
+  throw "La versión debe usar SemVer, con sufijo prerelease opcional."
+}
 $guardianVersionSrc = Join-Path $objDir "GuardianVersionInfo.g.cs"
 $updaterVersionSrc = Join-Path $objDir "UpdaterVersionInfo.g.cs"
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"

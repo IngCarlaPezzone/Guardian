@@ -601,3 +601,16 @@ Reglas no negociables:
 - STG usa sólo datos y perfiles ficticios; jamás se copia una DB, evento o perfil de PROD.
 - Guille nunca es el primer dispositivo de validación y nunca se registra en STG.
 - Los scripts `*-stg.ps1` operan únicamente el proyecto Compose `guardian-stg`; no sustituirlos por scripts de PROD.
+
+### Versionado y promoción
+
+- PROD usa versiones SemVer normales, por ejemplo `0.4.1`.
+- Durante el desarrollo de una feature en STG se usan versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. No representan la numeración de PROD.
+- Nunca usar una versión sin sufijo en STG salvo para reproducir explícitamente una versión PROD existente.
+- Al aprobar una feature en STG, crear una Release Candidate con la próxima versión de PROD: si PROD es `0.4.1`, usar `0.4.2-rc`. Probarla integralmente en STG, incluyendo updater cuando corresponda.
+- Si la RC aprueba, publicar `0.4.2` en PROD. Nunca publicar versiones `-staging-*` ni `-rc` en PROD.
+- El rollout de PROD es obligatorio: **PC TEST/Carla → validar operación → PC Guille**.
+
+### Importación sanitizada de telemetría
+
+`import-prod-telemetry-to-stg.ps1` es la única vía permitida para importar comportamiento de Activity desde PROD hacia STG. Debe mantener origen de sólo lectura y destino exclusivamente STG, verificar ambos entornos y transferir únicamente la whitelist educativa sanitizada. Nunca transferir dispositivos, tokens, perfiles, respuestas, RemoteConfig, comandos, releases ni credenciales.

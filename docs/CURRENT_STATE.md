@@ -65,10 +65,38 @@ Después de `reset-stg.ps1`, recrear esa identidad con ` .\scripts\run-stg-clien
 Para generar, copiar y registrar una release sólo en STG:
 
 ```powershell
-.\scripts\publish-release-stg.ps1 -Description "Validación STG"
+.\scripts\publish-release-stg.ps1 -Version "0.1.0-staging-environment" -Description "Validación STG"
 ```
 
 El artefacto se monta desde `releases-stg/` y el registro se guarda en la DB STG. Nunca aparece en Admin PROD ni puede ser seleccionado por un dispositivo PROD.
+
+## Versionado y promoción
+
+PROD actual usa SemVer normal: `0.4.1`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+
+No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. Al aprobar la feature, crear una RC basada en la próxima versión productiva: si PROD es `0.4.1`, probar `0.4.2-rc` integralmente en STG —incluido updater cuando aplique—. Si aprueba, publicar `0.4.2` en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
+
+El rollout obligatorio en PROD es: **PC TEST/Carla → validar operación → PC Guille**.
+
+## Importación sanitizada de telemetría PROD → STG
+
+Para poblar Activity o métricas con comportamiento real sin acoplar entornos:
+
+```powershell
+.\scripts\import-prod-telemetry-to-stg.ps1
+# Incluye sólo eventos técnicos explícitamente permitidos además de las misiones
+.\scripts\import-prod-telemetry-to-stg.ps1 -IncludeTechnical
+# Reemplaza el dataset importado anterior en los dispositivos ficticios STG
+.\scripts\import-prod-telemetry-to-stg.ps1 -Replace
+```
+
+El script exige `.env` PROD y `.env.stg` STG, comprueba `origen=PROD`, `destino=STG` y DBs diferentes antes de operar. Lee PROD mediante consultas `SELECT` dentro de `guardian-app`; sólo escribe en `guardian-stg-app`.
+
+La whitelist por defecto es `MissionStarted`, `MissionFailed` y `MissionSolved`. Con `-IncludeTechnical` suma solamente eventos técnicos seguros definidos en el script. Conserva UTC/timestamp, tipo, versión de cliente y los campos educativos `mission_id`/`missionId`, categoría, nivel, skill, variant, intento y resultado. No transfiere device ID, hostname, display name, token, bootstrap token, perfil, nombre, apellido, fecha de nacimiento, RemoteConfig, comandos, releases, credenciales, respuestas ni el payload completo. Los eventos se asignan a dispositivos ficticios `STG-IMPORTED-TELEMETRY-*`; una segunda ejecución no duplica el mismo dataset y `-Replace` lo recrea explícitamente.
+
+## Validación manual STG realizada
+
+La validación manual de STG ya confirmó: aislamiento PROD/STG; reset STG sin afectar PROD; cliente WPF real contra STG; RemoteConfig; misión manual; telemetría; pause/resume; publicación de release STG; upgrade real `0.4.1 → 0.4.2`; downgrade real `0.4.2 → 0.4.1`; y PROD no afectado.
 
 ## Promoción obligatoria
 
