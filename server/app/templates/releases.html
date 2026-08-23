@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Guardian Releases</title>
+  <title>Releases - {{ admin_title }}</title>
   <link rel="stylesheet" href="/admin/static/admin.css">
 </head>
 <body>
-  <header><h1>Releases</h1><a href="/admin/">Volver</a></header>
+  <header><h1>Releases — {{ admin_title }}</h1><a href="/admin/">Volver</a></header>
   <main>
     {% for release in releases %}
     <article class="card">

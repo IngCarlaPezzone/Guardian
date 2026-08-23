@@ -559,3 +559,45 @@ simplicidad
 mantenibilidad
 observabilidad
 ```
+
+## 28. Entornos STG y PROD
+
+Guardian mantiene dos entornos permanentemente aislados:
+
+- **PROD** es el entorno real: base, dispositivos, telemetría y releases reales.
+- **STG** es el entorno de validación: servicios, PostgreSQL/volumen, releases, dispositivos, secretos y configuración exclusivos. Nunca comparte DB, releases ni devices con PROD.
+
+Flujo obligatorio para toda feature:
+
+```text
+FEATURE BRANCH
+↓
+tests/build
+↓
+STG
+↓
+validación server/Admin
+↓
+cliente Guardian TEST contra STG
+↓
+release/updater STG cuando aplique
+↓
+aprobación
+↓
+merge main
+↓
+deploy PROD
+↓
+PC TEST/Carla en PROD
+↓
+recién después Guille
+```
+
+Reglas no negociables:
+
+- Nunca desplegar una feature branch sobre PROD para preview visual o exploratorio.
+- Toda migración se prueba primero en STG.
+- Cambios de release/updater se prueban primero en STG cuando sean relevantes.
+- STG usa sólo datos y perfiles ficticios; jamás se copia una DB, evento o perfil de PROD.
+- Guille nunca es el primer dispositivo de validación y nunca se registra en STG.
+- Los scripts `*-stg.ps1` operan únicamente el proyecto Compose `guardian-stg`; no sustituirlos por scripts de PROD.

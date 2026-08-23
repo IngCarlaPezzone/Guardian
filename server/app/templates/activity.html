@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Actividad - Guardian Admin</title>
+  <title>Actividad - {{ admin_title }}</title>
   <link rel="stylesheet" href="/admin/static/admin.css">
 </head>
 <body>
   <header>
-    <h1>Guardian Admin</h1>
+    <h1>{{ admin_title }}</h1>
     <nav class="header-actions">
       <a href="/admin/">Dispositivos</a>
       <form method="post" action="/admin/logout"><button>Salir</button></form>
