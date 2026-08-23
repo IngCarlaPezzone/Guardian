@@ -119,12 +119,13 @@ def heartbeat(payload: HeartbeatPayload, device: Device = Depends(current_device
 def get_config(device: Device = Depends(current_device)):
     config = device.configuration
     if config is None:
-        return {"version": 1, "interval_seconds": 900, "updated_at": utcnow().isoformat(), "mission_config": {"EnabledSkills": [], "PrivateProfile": {}}}
+        return {"version": 1, "interval_seconds": 900, "timezone": "UTC", "updated_at": utcnow().isoformat(), "mission_config": {"EnabledSkills": [], "PrivateProfile": {}}}
     profile = device.mission_profile
     mission_config = config.mission_config or {}
     return {
         "version": config.version,
         "interval_seconds": config.interval_seconds,
+        "timezone": config.timezone,
         "updated_at": config.updated_at.isoformat(),
         "mission_config": {
             "EnabledSkills": mission_config.get("enabledSkills", ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"]),

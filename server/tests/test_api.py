@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["DEVICE_BOOTSTRAP_TOKEN"] = "test-bootstrap"
@@ -11,6 +12,7 @@ from server.app.admin import sign_username
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
+from server.app.metrics import dashboard_data
 from server.app.models import Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.security import hash_secret, utcnow
 
@@ -431,7 +433,7 @@ def test_admin_activity_filters_device_events():
     assert response.status_code == 200
     assert "UpdateCompleted" in response.text
     assert "targetVersion" in response.text
-    assert "Hora Admin" in response.text
+    assert "Hora local" in response.text
 
 
 def test_admin_mission_configuration_and_private_profile_are_device_scoped():
@@ -446,7 +448,7 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     page = client.get(f"/admin/devices/{device_id}/missions")
     assert page.status_code == 200
     assert "Comprensión funcional" in page.text
-    assert "aria-label" in page.text
+    assert "data-tooltip" in page.text
 
     response = client.post(f"/admin/devices/{device_id}/config", data={
         "display_name": "Mission Test", "interval_minutes": "15", "missions_submitted": "1",
@@ -485,3 +487,88 @@ def test_admin_rejects_zero_enabled_mission_skills_without_saving():
         config = db.query(DeviceConfiguration).filter(DeviceConfiguration.device_id == device_id).one()
         assert config.mission_config == {"enabledSkills": ["math.basic_operations_1.subtraction"]}
         assert config.version == 4
+
+
+def test_admin_configuration_persists_display_interval_and_timezone():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc3"
+    token = "timezone-config-token"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Timezone-PC", token_hash=hash_secret(token), client_version="0.4.1", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=1))
+        db.commit()
+
+    response = client.post(f"/admin/devices/{device_id}/config", data={
+        "display_name": "PC de prueba", "interval_minutes": "20", "timezone_name": "America/Argentina/Buenos_Aires",
+        "missions_submitted": "1", "enabled_skills": ["math.basic_operations_1.addition"],
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    remote = client.get(f"/api/v1/devices/{device_id}/config", headers={"Authorization": f"Bearer {token}"})
+    assert remote.status_code == 200
+    assert remote.json()["timezone"] == "America/Argentina/Buenos_Aires"
+    with SessionLocal() as db:
+        device = db.get(Device, device_id)
+        assert device.display_name == "PC de prueba"
+        assert device.configuration.interval_seconds == 1200
+
+
+def test_activity_uses_device_timezone_and_hides_technical_events_by_default():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc4"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Activity-Timezone-PC", token_hash=hash_secret("activity-timezone-token"), client_version="0.4.1", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="America/Argentina/Buenos_Aires", version=1))
+        db.add_all([
+            DeviceEvent(event_id="30000000-0000-4000-8000-000000000001", device_id=device_id, occurred_at=datetime(2026, 8, 23, 3, 30, tzinfo=timezone.utc), received_at=utcnow(), event_type="MissionSolved", payload={"mission_id": "activity-1", "category_id": "math", "level_id": "basic_operations_1", "skill_id": "addition", "attempt": 1}),
+            DeviceEvent(event_id="30000000-0000-4000-8000-000000000002", device_id=device_id, occurred_at=datetime(2026, 8, 23, 3, 31, tzinfo=timezone.utc), received_at=utcnow(), event_type="HeartbeatSent", payload={}),
+        ])
+        db.commit()
+
+    default = client.get(f"/admin/devices/{device_id}/activity?period=all")
+    technical = client.get(f"/admin/devices/{device_id}/activity?period=all&technical=true")
+    assert default.status_code == 200
+    assert "America/Argentina/Buenos_Aires" in default.text
+    assert "23/08/2026" in default.text
+    assert "HeartbeatSent" not in default.text
+    assert "HeartbeatSent" in technical.text
+
+
+def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc5"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Metrics-PC", token_hash=hash_secret("metrics-token"), client_version="0.4.1", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="UTC", version=1))
+        events = [
+            ("40000000-0000-4000-8000-000000000001", "MissionStarted", "m-first", 1, "math", "basic_operations_1", "addition", "a1", datetime(2026, 8, 20, 10, 0, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000002", "MissionSolved", "m-first", 1, "math", "basic_operations_1", "addition", "a1", datetime(2026, 8, 20, 10, 0, 12, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000003", "MissionStarted", "m-third", 1, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000004", "MissionFailed", "m-third", 1, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, 2, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000005", "MissionFailed", "m-third", 2, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, 4, tzinfo=timezone.utc)),
+            # Reintento retransmitido: no debe aumentar la cantidad de intentos.
+            ("40000000-0000-4000-8000-000000000006", "MissionFailed", "m-third", 2, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, 5, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000007", "MissionSolved", "m-third", 3, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, 8, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000008", "MissionSolved", "legacy-mission", 1, "math", "basic_operations_1", "subtraction", "s1", datetime(2026, 8, 22, 10, 0, tzinfo=timezone.utc)),
+        ]
+        for event_id, event_type, mission_id, attempt, category, level, skill, variant, occurred_at in events:
+            payload = {"missionId": mission_id, "attempt": attempt, "category_id": category, "level_id": level, "skill_id": skill, "variant_id": variant} if mission_id == "legacy-mission" else {"mission_id": mission_id, "attempt": attempt, "category_id": category, "level_id": level, "skill_id": skill, "variant_id": variant}
+            db.add(DeviceEvent(event_id=event_id, device_id=device_id, occurred_at=occurred_at, received_at=utcnow(), event_type=event_type, payload=payload))
+        db.commit()
+
+    with SessionLocal() as db:
+        data = dashboard_data(db, db.get(Device, device_id), "all", None, None, None, None, None)
+    assert data["summary"]["missions"] == 3
+    assert data["summary"]["first_attempt"] == 2
+    assert data["summary"]["third_plus"] == 1
+    assert data["summary"]["total_attempts"] == 5
+    assert data["summary"]["median_seconds"] == 10.0
+    assert {row["label"] for row in data["rows"]} == {"Matemática", "Comprensión"}
+
+    response = client.get(f"/admin/devices/{device_id}/metrics?period=all")
+    assert response.status_code == 200
+    assert "Misiones resueltas" in response.text
+    assert "3 misiones únicas" in response.text
+    skill = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1&skill=calendar")
+    assert skill.status_code == 200
+    assert "Ver variantes (1)" in skill.text
+    assert "c1" in skill.text

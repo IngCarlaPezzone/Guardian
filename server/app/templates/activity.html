@@ -1,82 +1,8 @@
 <!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Actividad - Guardian Admin</title>
-  <link rel="stylesheet" href="/admin/static/admin.css">
-</head>
-<body>
-  <header>
-    <h1>Guardian Admin</h1>
-    <nav class="header-actions">
-      <a href="/admin/">Dispositivos</a>
-      <form method="post" action="/admin/logout"><button>Salir</button></form>
-    </nav>
-  </header>
-  <main>
-    <section>
-      <h2>Actividad - {{ device.display_name or device.machine_name }}</h2>
-      <p class="muted">{{ device.machine_name }} · {{ device.id }} · version {{ device.client_version or '-' }}</p>
-
-      <form method="get" class="filters">
-        <label>Periodo
-          <select name="period">
-            <option value="today" {{ 'selected' if period == 'today' else '' }}>Hoy</option>
-            <option value="yesterday" {{ 'selected' if period == 'yesterday' else '' }}>Ayer</option>
-            <option value="date" {{ 'selected' if period == 'date' else '' }}>Fecha especifica</option>
-            <option value="all" {{ 'selected' if period == 'all' else '' }}>Todos</option>
-          </select>
-        </label>
-        <label>Fecha
-          <input name="date" type="date" value="{{ event_date }}" {{ 'disabled' if period != 'date' else '' }}>
-        </label>
-        <label>Tipo
-          <select name="group">
-            {% for key, label in groups %}
-            <option value="{{ key }}" {{ 'selected' if group == key else '' }}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <button>Filtrar</button>
-      </form>
-      <p class="muted">
-        {% if selected_day %}Mostrando fecha {{ selected_day }}{% else %}Mostrando todos los eventos{% endif %}
-        · Hora Admin: {{ timezone_label }}
-      </p>
-
-      <div class="event-table-wrap">
-        <table class="event-table">
-          <thead>
-            <tr>
-              <th>Hora</th>
-              <th>Evento</th>
-              <th>Version</th>
-              <th>Resumen</th>
-            </tr>
-          </thead>
-          <tbody>
-        {% for row in events %}
-        {% set event = row.event %}
-            <tr>
-              <td class="nowrap">{{ row.occurred_local.strftime('%H:%M:%S') if row.occurred_local else '-' }}</td>
-              <td><strong>{{ event.event_type }}</strong></td>
-              <td class="nowrap">{{ event.client_version or '-' }}</td>
-              <td>
-                {% if row.summary %}<span>{{ row.summary }}</span>{% endif %}
-                <details>
-                  <summary>JSON</summary>
-                  <pre>{{ row.payload_json }}</pre>
-                </details>
-              </td>
-            </tr>
-        {% else %}
-            <tr><td colspan="4" class="muted">No hay eventos para estos filtros.</td></tr>
-        {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-</body>
-</html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Actividad - Guardian</title><link rel="stylesheet" href="/admin/static/admin.css"></head>
+<body><header><h1>Guardian Admin</h1><nav class="header-actions"><a class="button secondary" href="/admin/">Dispositivos</a><a class="button secondary" href="/admin/devices/{{ device.id }}/missions">Configuración</a><a class="button secondary" href="/admin/devices/{{ device.id }}/metrics">Métricas</a></nav></header>
+<main><section><div class="page-heading"><div><p class="eyebrow">{{ device.machine_name }}</p><h2>Actividad — {{ device.display_name or device.machine_name }}</h2></div></div>
+<form method="get" class="card filters"><label>Período<select id="period" name="period"><option value="today" {{ 'selected' if period == 'today' else '' }}>Hoy</option><option value="yesterday" {{ 'selected' if period == 'yesterday' else '' }}>Ayer</option><option value="7d" {{ 'selected' if period == '7d' else '' }}>Últimos 7 días</option><option value="30d" {{ 'selected' if period == '30d' else '' }}>Últimos 30 días</option><option value="date" {{ 'selected' if period == 'date' else '' }}>Fecha específica</option><option value="all" {{ 'selected' if period == 'all' else '' }}>Todos</option></select></label><label>Fecha<input id="event-date" name="date" type="date" value="{{ event_date }}" {{ 'disabled' if period != 'date' else '' }}></label><label>Categoría<select name="group">{% for key,label in groups %}<option value="{{ key }}" {{ 'selected' if group == key else '' }}>{{ label }}</option>{% endfor %}</select></label><label class="filter-toggle"><input name="technical" type="checkbox" value="true" {{ 'checked' if technical else '' }}> Mostrar eventos técnicos</label><button>Filtrar</button></form>
+<p class="muted">Hora local: {{ timezone_label }}{% if selected_day %} · Fecha {{ selected_day }}{% endif %}</p>
+<div class="event-table-wrap"><table><thead><tr><th>Fecha</th><th>Hora</th><th>Evento</th><th>Versión</th><th>Resumen</th></tr></thead><tbody>{% for row in events %}{% set event=row.event %}<tr><td class="nowrap">{{ row.occurred_local.strftime('%d/%m/%Y') if row.occurred_local else '—' }}</td><td class="nowrap">{{ row.occurred_local.strftime('%H:%M:%S') if row.occurred_local else '—' }}</td><td><strong>{{ row.label }}</strong><span class="event-type">{{ event.event_type }}</span></td><td class="nowrap">{{ event.client_version or '—' }}</td><td>{% if row.summary %}<span>{{ row.summary }}</span>{% endif %}<details><summary>JSON técnico</summary><pre>{{ row.payload_json }}</pre></details></td></tr>{% else %}<tr><td colspan="5" class="muted">No hay eventos para estos filtros.</td></tr>{% endfor %}</tbody></table></div>
+</section></main><script>var period=document.getElementById('period'),date=document.getElementById('event-date');function syncDate(){date.disabled=period.value!=='date';}period.addEventListener('change',syncDate);syncDate();</script></body></html>

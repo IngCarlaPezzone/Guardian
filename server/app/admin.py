@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from server.app.config import settings
 from server.app.db import get_db
 from server.app.models import AdminUser, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
+from server.app.metrics import CATALOG, dashboard_data, device_timezone
 from server.app.security import VALID_DEVICE_COMMAND_TYPES, current_admin, utcnow, valid_interval, valid_semver, verify_secret
 from server.app.update_queue import active_update, cleanup_update_queue, command_last_change, latest_update_by_device
 
@@ -60,16 +61,14 @@ EVENT_GROUPS = {
         "UpdateCompleted",
         "UpdateFailed",
     ],
-    "control": [
-        "MonitoringPauseCommandReceived",
-        "MonitoringPaused",
-        "MonitoringResumeCommandReceived",
-        "MonitoringResumed",
-        "TriggerMissionCommandReceived",
-        "RemoteMissionTriggered",
+    "system": [
+        "MonitoringPauseCommandReceived", "MonitoringPaused", "MonitoringResumeCommandReceived", "MonitoringResumed",
+        "TriggerMissionCommandReceived", "RemoteMissionTriggered", "Error", "UnhandledError", "HeartbeatFailed",
+        "UpdateFailed", "RemoteConfigFailed", "GuardianStarted", "GuardianStopped", "DeviceLocked", "DeviceUnlocked",
     ],
-    "errors": ["Error", "UnhandledError", "HeartbeatFailed", "UpdateFailed", "RemoteConfigFailed"],
 }
+
+TECHNICAL_EVENTS = {"HeartbeatSent", "RemoteConfigFetched", "RemoteConfigReceived", "TelemetryConcurrentSelfTest"}
 
 
 def parse_day(value: str | None) -> date_cls | None:
@@ -112,6 +111,17 @@ def to_admin_time(value: datetime | None):
 
 def event_summary(event: DeviceEvent) -> str:
     payload = event.payload or {}
+    if event.event_type in {"MissionStarted", "MissionFailed", "MissionSolved"}:
+        category = payload.get("category_id")
+        level = payload.get("level_id")
+        skill = payload.get("skill_id")
+        label = CATALOG.get(category or "", {}).get("levels", {}).get(level or "", {}).get("skills", {}).get(skill or "", skill or "Misión")
+        attempt = payload.get("attempt")
+        if event.event_type == "MissionSolved":
+            return f"{label} · {attempt or '?'} intento"
+        if event.event_type == "MissionFailed":
+            return f"{label} · reintento {attempt or '?'}"
+        return label
     keys = [
         "version",
         "targetVersion",
@@ -139,6 +149,15 @@ def event_summary(event: DeviceEvent) -> str:
         if value is not None and value != "":
             parts.append(f"{key}: {value}")
     return " | ".join(parts)
+
+
+def event_label(event_type: str) -> str:
+    labels = {
+        "MissionStarted": "Misión iniciada", "MissionFailed": "Misión con reintento", "MissionSolved": "Misión resuelta",
+        "RemoteConfigApplied": "Configuración aplicada", "UpdateCompleted": "Actualización completada",
+        "UpdateFailed": "Actualización fallida", "MonitoringPaused": "Misiones pausadas", "MonitoringResumed": "Misiones reanudadas",
+    }
+    return labels.get(event_type, event_type)
 
 
 def update_view_model(command: UpdateCommand | None):
@@ -171,6 +190,17 @@ def device_guardian_state(device: Device) -> str:
     if not is_device_online(device):
         return "offline"
     return "active" if device.monitoring_enabled else "paused"
+
+
+def valid_timezone(value: str) -> str | None:
+    name = (value or "").strip()
+    if name == "UTC":
+        return name
+    try:
+        ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        return None
+    return name
 
 
 def render_mission_config(request: Request, device: Device, selected: list[str] | None = None, error: str | None = None, status_code: int = 200):
@@ -222,6 +252,7 @@ def device_activity(
     request: Request,
     period: str = Query("today"),
     group: str = Query("all"),
+    technical: bool = Query(False),
     event_date: str | None = Query(None, alias="date"),
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(current_admin),
@@ -231,19 +262,30 @@ def device_activity(
         raise HTTPException(status_code=404)
 
     query = db.query(DeviceEvent).filter(DeviceEvent.device_id == device.id)
+    local_tz = device_timezone(device)
     selected_day = None
+    range_start = None
+    range_end = None
+    today = utcnow().astimezone(local_tz).date()
     if period == "today":
-        selected_day = admin_now().date()
+        selected_day = today
     elif period == "yesterday":
-        selected_day = admin_now().date() - timedelta(days=1)
+        selected_day = today - timedelta(days=1)
+    elif period == "7d":
+        range_start, range_end = today - timedelta(days=6), today + timedelta(days=1)
+    elif period == "30d":
+        range_start, range_end = today - timedelta(days=29), today + timedelta(days=1)
     elif period == "date":
         selected_day = parse_day(event_date)
     elif period != "all":
         period = "today"
-        selected_day = admin_now().date()
+        selected_day = today
 
     if selected_day is not None:
-        start, end = admin_day_range_utc(selected_day)
+        range_start, range_end = selected_day, selected_day + timedelta(days=1)
+    if range_start is not None:
+        start = datetime.combine(range_start, time.min, tzinfo=local_tz).astimezone(timezone.utc)
+        end = datetime.combine(range_end, time.min, tzinfo=local_tz).astimezone(timezone.utc)
         query = query.filter(DeviceEvent.occurred_at >= start, DeviceEvent.occurred_at < end)
 
     if group != "all":
@@ -252,13 +294,16 @@ def device_activity(
             group = "all"
         else:
             query = query.filter(DeviceEvent.event_type.in_(event_types))
+    if not technical:
+        query = query.filter(~DeviceEvent.event_type.in_(TECHNICAL_EVENTS))
 
     events = query.order_by(DeviceEvent.occurred_at.desc()).limit(300).all()
     event_rows = [
         {
             "event": event,
             "summary": event_summary(event),
-            "occurred_local": to_admin_time(event.occurred_at),
+            "label": event_label(event.event_type),
+            "occurred_local": event.occurred_at.astimezone(local_tz) if event.occurred_at else None,
             "payload_json": json.dumps(event.payload or {}, ensure_ascii=False, indent=2, sort_keys=True),
         }
         for event in events
@@ -271,15 +316,45 @@ def device_activity(
         "group": group,
         "event_date": (selected_day.isoformat() if selected_day is not None else (event_date or "")),
         "selected_day": selected_day,
-        "timezone_label": str(admin_timezone()),
+        "timezone_label": str(local_tz),
+        "technical": technical,
         "groups": [
             ("all", "Todos"),
             ("missions", "Misiones"),
-            ("config", "Configuracion"),
+            ("config", "Configuración"),
             ("updates", "Actualizaciones"),
-            ("control", "Control"),
-            ("errors", "Errores"),
+            ("system", "Sistema"),
         ],
+    })
+
+
+@router.get("/devices/{device_id}/metrics", response_class=HTMLResponse)
+def device_metrics(
+    device_id: str,
+    request: Request,
+    period: str = Query("30d"),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    category: str | None = Query(None),
+    level: str | None = Query(None),
+    skill: str | None = Query(None),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(current_admin),
+):
+    device = db.get(Device, device_id)
+    if device is None:
+        raise HTTPException(status_code=404)
+    data = dashboard_data(db, device, period, start, end, category, level, skill)
+    breadcrumbs = [("Métricas", f"/admin/devices/{device.id}/metrics?period={period}")]
+    if category:
+        breadcrumbs.append((data["scope_label"] if not level else CATALOG.get(category, {}).get("label", category), f"/admin/devices/{device.id}/metrics?period={period}&category={category}"))
+    if level:
+        breadcrumbs.append((CATALOG.get(category or "", {}).get("levels", {}).get(level, {}).get("label", level), f"/admin/devices/{device.id}/metrics?period={period}&category={category}&level={level}"))
+    if skill:
+        breadcrumbs.append((data["scope_label"], ""))
+    return templates.TemplateResponse("metrics.html", {
+        "request": request, "device": device, "data": data, "period": period, "start": start or "", "end": end or "",
+        "category": category, "level": level, "skill": skill, "breadcrumbs": breadcrumbs,
     })
 
 
@@ -311,13 +386,16 @@ def logout():
 
 
 @router.post("/devices/{device_id}/config")
-def update_device_config(device_id: str, request: Request, display_name: str = Form(""), interval_minutes: int = Form(...), missions_submitted: str = Form(""), enabled_skills: list[str] = Form([]), preferred_name: str = Form(""), first_name: str = Form(""), middle_name: str = Form(""), last_name: str = Form(""), birth_date: str = Form(""), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
+def update_device_config(device_id: str, request: Request, display_name: str = Form(""), interval_minutes: int = Form(...), timezone_name: str = Form("UTC"), missions_submitted: str = Form(""), enabled_skills: list[str] = Form([]), preferred_name: str = Form(""), first_name: str = Form(""), middle_name: str = Form(""), last_name: str = Form(""), birth_date: str = Form(""), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
     seconds = int(interval_minutes) * 60
     if not valid_interval(seconds):
         raise HTTPException(status_code=422, detail="interval out of range")
+    timezone_name = valid_timezone(timezone_name)
+    if timezone_name is None:
+        raise HTTPException(status_code=422, detail="timezone must be a valid IANA timezone")
     selected = None
     if missions_submitted == "1":
         valid_skills = {key for _, _, _, _, skills in MISSION_LEVELS for key, _, _ in skills}
@@ -328,11 +406,14 @@ def update_device_config(device_id: str, request: Request, display_name: str = F
     config = device.configuration
     changed = False
     if config is None:
-        config = DeviceConfiguration(device_id=device.id, interval_seconds=seconds, version=1)
+        config = DeviceConfiguration(device_id=device.id, interval_seconds=seconds, timezone=timezone_name, version=1)
         db.add(config)
     else:
         if config.interval_seconds != seconds:
             config.interval_seconds = seconds
+            changed = True
+        if config.timezone != timezone_name:
+            config.timezone = timezone_name
             changed = True
     if missions_submitted == "1":
         mission_config = config.mission_config or {}
