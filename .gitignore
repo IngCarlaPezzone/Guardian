@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.stg.example
 
 # Local runtime data
 .guardian-local/
@@ -19,6 +20,7 @@ releases/*.zip
 releases/*.exe
 releases/*.sha256
 !releases/.gitkeep
+releases-stg/
 
 # Personal planning and notes
 docs/Idea_inicial.md

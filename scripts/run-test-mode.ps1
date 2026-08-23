@@ -1,15 +1,20 @@
+param(
+  [string]$ServerUrl = "http://localhost:8080",
+  [string]$ConfigDirectory = "",
+  [string]$EnvironmentFile = ".env"
+)
+
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $root "dist\Guardian.exe"
-$configDir = Join-Path $env:LOCALAPPDATA "Guardian"
+$configDir = if ($ConfigDirectory) { $ConfigDirectory } else { Join-Path $env:LOCALAPPDATA "Guardian" }
 $configPath = Join-Path $configDir "config.json"
-$serverUrl = "http://localhost:8080"
 
 function Read-DotEnvValue {
   param([string]$Name)
 
-  $envPath = Join-Path $root ".env"
+  $envPath = Join-Path $root $EnvironmentFile
   if (!(Test-Path $envPath)) { return "" }
 
   foreach ($line in Get-Content -LiteralPath $envPath) {
@@ -22,24 +27,6 @@ function Read-DotEnvValue {
     }
   }
   return ""
-}
-
-function Stop-GuardianForTest {
-  $processes = @(Get-Process Guardian -ErrorAction SilentlyContinue)
-  if ($processes.Count -gt 0) {
-    $processes | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 2
-  }
-
-  if (Test-Path $exe) {
-    $previousHome = $env:GUARDIAN_HOME
-    try {
-      $env:GUARDIAN_HOME = $configDir
-      Start-Process -FilePath $exe -ArgumentList "--unmute-audio" -Wait | Out-Null
-    } finally {
-      $env:GUARDIAN_HOME = $previousHome
-    }
-  }
 }
 
 function New-DefaultConfig {
@@ -125,20 +112,17 @@ if ([string]::IsNullOrWhiteSpace([string]$config["DeviceToken"])) {
 
 ($config | ConvertTo-Json -Compress) | Set-Content -Encoding UTF8 -Path $configPath
 
-Stop-GuardianForTest
-
 $previousHome = $env:GUARDIAN_HOME
 try {
   $env:GUARDIAN_HOME = $configDir
-  Start-Process -FilePath $exe -WorkingDirectory $root
+  $process = Start-Process -FilePath $exe -WorkingDirectory $root -PassThru
 } finally {
   $env:GUARDIAN_HOME = $previousHome
 }
 
 Start-Sleep -Seconds 3
-$running = @(Get-Process Guardian -ErrorAction SilentlyContinue)
-if ($running.Count -ne 1) {
-  throw "Se esperaba una unica instancia de Guardian, pero hay $($running.Count)."
+if ($process.HasExited) {
+  throw "Guardian de prueba termino antes de iniciar. Si ya hay otro Guardian con este mismo directorio de test, cerralo manualmente. No se detuvieron procesos Guardian existentes."
 }
 
 Write-Host "Guardian iniciado en modo prueba."

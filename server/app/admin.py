@@ -19,6 +19,8 @@ from server.app.update_queue import active_update, cleanup_update_queue, command
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates.env.globals["guardian_environment"] = settings.guardian_environment.strip().upper()
+templates.env.globals["admin_title"] = settings.admin_title
 
 MISSION_LEVELS = [
     ("math", "basic_operations_1", "Operaciones básicas", "Operaciones matemáticas básicas.", [

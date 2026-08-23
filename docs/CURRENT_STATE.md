@@ -1,73 +1,124 @@
-# Guardian — Estado actual
+# Estado actual — Guardian
 
-## Versión y propósito
+## Entornos
 
-La versión productiva de partida es `0.4.1`. Guardian es una aplicación Windows local-first que presenta misiones educativas y dispone de administración remota simple mediante HTTP y polling.
+Guardian opera con dos entornos aislados.
 
-## Arquitectura
+| Entorno | Compose | Servicios | Puerto Admin/API | Estado mutable |
+| --- | --- | --- | --- | --- |
+| PROD | `deploy/docker-compose.yml` | `postgres`, `guardian-app` (y `cloudflared` opcional) | `8080` | `.env`, `guardian_postgres_data`, `releases/` |
+| STG | `deploy/docker-compose.stg.yml` | `guardian-stg-db`, `guardian-stg-app` | `8081` | `.env.stg`, `guardian_stg_postgres_data`, `releases-stg/` |
 
-```text
-Guardian Client Windows → Guardian Server/API → PostgreSQL
-Guardian Admin          → Guardian Server/API
-Guardian Updater        → Releases publicadas
+STG no comparte contenedores, volumen PostgreSQL, base, registry de dispositivos, RemoteConfig, telemetría, comandos ni releases con PROD. El Admin STG muestra persistentemente **Guardian Admin — STG**. PROD no muestra ese rótulo.
+
+## Configuración
+
+- `.env` es exclusivamente PROD y no se versiona.
+- `.env.stg` es exclusivamente STG y no se versiona. Crear desde `.env.stg.example`, usando secretos distintos de PROD.
+- `GUARDIAN_ENVIRONMENT=STG` es obligatorio para STG; el seed se niega a ejecutarse si falta.
+- En STG local, `GUARDIAN_ADMIN_HOST` queda vacío para que el cliente TEST pueda usar la API en `localhost`; la barrera de hostname público de PROD se conserva sin cambios.
+- No configurar Cloudflare público para STG en esta etapa.
+
+## Operación STG
+
+Desde la raíz del repositorio:
+
+```powershell
+Copy-Item .env.stg.example .env.stg
+# Completar valores STG únicos en .env.stg
+.\scripts\start-stg.ps1
+.\scripts\seed-stg.ps1
 ```
 
-- Cliente: WPF/.NET Framework, persistencia local en `%LOCALAPPDATA%\Guardian`.
-- Server/Admin: FastAPI, SQLAlchemy, Alembic y Jinja2.
-- Base central: PostgreSQL; los tests usan SQLite en memoria.
-- Releases: ZIP con `Guardian.exe`, `Guardian.exe.config` y `GuardianUpdater.exe`.
+Abrir `http://localhost:8081/admin/`. Para detener sólo STG:
 
-## Componentes y flujos vigentes
-
-- Registro de dispositivo, heartbeat, polling de RemoteConfig, cola de telemetría y comandos remotos.
-- `Device.display_name` es el nombre visible editable; `machine_name` permanece como hostname técnico.
-- `DeviceConfiguration` conserva intervalo y configuración de misiones por dispositivo.
-- El perfil privado de misiones se almacena separado por dispositivo y no se registra en telemetría.
-- Eventos se guardan en UTC en `device_events`; el cliente mantiene `events.jsonl` y `events-pending.jsonl` para operación offline.
-- El updater valida SHA-256, realiza backup, reemplaza binarios y soporta rollback/downgrade.
-
-## Mission System v2
-
-Las misiones siguen la jerarquía Categoría → Nivel → Skill → Variante.
-
-- Matemática / Operaciones básicas: sumas, restas y multiplicaciones.
-- Comprensión / Comprensión funcional: identidad, edad y nacimiento, fecha actual, relaciones temporales, calendario y estaciones.
-- Una misión por disparo; los reintentos conservan `mission_id`, skill y variante.
-- La rotación es global, persiste entre reinicios y se reinicia al cambiar el día local.
-- La telemetría de misión incluye categoría, nivel, skill, variante e intento, sin respuestas ni valores privados.
-
-## Estructura relevante
-
-```text
-src/Guardian/              Cliente Windows
-updater/                   Updater separado
-server/app/                API, Admin, modelos y templates
-server/migrations/         Migraciones Alembic
-server/tests/              Tests FastAPI/SQLAlchemy
-scripts/                   Build, test, server y publicación
-docs/                      Documentación vigente
-docs/archive/              Referencias históricas
+```powershell
+.\scripts\stop-stg.ps1
 ```
 
-## Operación
+Para reconstruir la DB y releases de STG desde cero (requiere confirmación explícita):
 
-- Build: `./scripts/build.ps1`
-- Self-test: `./scripts/self-test.ps1`
-- Tests server: `./.venv/Scripts/python.exe -m pytest server/tests`
-- Migraciones: aplicar Alembic mediante el flujo de servidor documentado.
-- Publicación de release: `./scripts/publish-release.ps1 -Description "..."`.
+```powershell
+.\scripts\reset-stg.ps1 -Confirm
+.\scripts\seed-stg.ps1
+```
 
-Las pruebas se realizan primero en PC TEST. No enviar una actualización al dispositivo productivo hasta validar el updater, el reinicio, el heartbeat y la actividad de la release en PC TEST.
+`reset-stg.ps1` usa exclusivamente el proyecto Compose `guardian-stg` y el volumen `guardian_stg_postgres_data`; no opera sobre PROD.
 
-## Documentación de referencia
+Para reconstruir código/contenedor STG sin borrar datos:
 
-- [Arquitectura](architecture.md), [seguridad](security.md), [despliegue](deployment.md) y [flujo de actualización](update-flow.md).
-- Specs finales de Mission System v2.
-- Spec Stage 3A + 3B para el rediseño de Admin y métricas.
+```powershell
+.\scripts\update-stg.ps1
+```
 
-## Deuda técnica vigente
+## Cliente y releases STG
 
-- Modernizar LockWindow y su accesibilidad sin alterar la lógica educativa.
-- Revisar UX de acierto/error y respuestas largas en cliente.
-- Considerar una futura unificación de `missionId` y `mission_id`.
-- Validar el valor práctico del tiempo de resolución antes de darle mayor protagonismo.
+El cliente de prueba se ejecuta sin tocar la instalación local de PROD:
+
+```powershell
+.\scripts\run-stg-client.ps1
+```
+
+Usa `http://localhost:8081`, `.env.stg`, y `%LOCALAPPDATA%\Guardian-STG-TEST`. Por lo tanto crea identidad y token propios de STG y no reutiliza `Guardian` ni la identidad productiva.
+Después de `reset-stg.ps1`, recrear esa identidad con ` .\scripts\run-stg-client.ps1 -ResetIdentity`.
+
+Para generar, copiar y registrar una release sólo en STG:
+
+```powershell
+.\scripts\publish-release-stg.ps1 -Version "0.1.0-staging-environment" -Description "Validación STG"
+```
+
+El artefacto se monta desde `releases-stg/` y el registro se guarda en la DB STG. Nunca aparece en Admin PROD ni puede ser seleccionado por un dispositivo PROD.
+
+## Versionado y promoción
+
+PROD actual usa SemVer normal: `0.4.1`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+
+No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. Al aprobar la feature, crear una RC basada en la próxima versión productiva: si PROD es `0.4.1`, probar `0.4.2-rc` integralmente en STG —incluido updater cuando aplique—. Si aprueba, publicar `0.4.2` en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
+
+El rollout obligatorio en PROD es: **PC TEST → validar operación → dispositivo productivo final**.
+
+## Importación sanitizada de telemetría PROD → STG
+
+Para poblar Activity o métricas con comportamiento real sin acoplar entornos:
+
+```powershell
+.\scripts\import-prod-telemetry-to-stg.ps1
+# Incluye sólo eventos técnicos explícitamente permitidos además de las misiones
+.\scripts\import-prod-telemetry-to-stg.ps1 -IncludeTechnical
+# Reemplaza el dataset importado anterior en los dispositivos ficticios STG
+.\scripts\import-prod-telemetry-to-stg.ps1 -Replace
+```
+
+El script exige `.env` PROD y `.env.stg` STG, comprueba `origen=PROD`, `destino=STG` y DBs diferentes antes de operar. Lee PROD mediante consultas `SELECT` dentro de `guardian-app`; sólo escribe en `guardian-stg-app`.
+
+La whitelist por defecto es `MissionStarted`, `MissionFailed` y `MissionSolved`. Con `-IncludeTechnical` suma solamente eventos técnicos seguros definidos en el script. Conserva UTC/timestamp, tipo, versión de cliente y los campos educativos `mission_id`/`missionId`, categoría, nivel, skill, variant, intento y resultado. No transfiere device ID, hostname, display name, token, bootstrap token, perfil, nombre, apellido, fecha de nacimiento, RemoteConfig, comandos, releases, credenciales, respuestas ni el payload completo. Los eventos se asignan a dispositivos ficticios `STG-IMPORTED-TELEMETRY-*`; una segunda ejecución no duplica el mismo dataset y `-Replace` lo recrea explícitamente.
+
+## Validación manual STG realizada
+
+La validación manual de STG ya confirmó: aislamiento PROD/STG; reset STG sin afectar PROD; cliente WPF real contra STG; RemoteConfig; misión manual; telemetría; pause/resume; publicación de release STG; upgrade real `0.4.1 → 0.4.2`; downgrade real `0.4.2 → 0.4.1`; y PROD no afectado.
+
+La importación sanitizada también fue validada manualmente contra PROD: la primera ejecución importó **281 eventos sanitizados**; la segunda importó **0 eventos nuevos**, confirmando idempotencia; y una ejecución posterior con `-Replace` importó **282 eventos**, porque PROD generó un evento nuevo entre corridas. No se copiaron identidades reales ni payloads completos, y PROD permaneció operativo.
+
+## Promoción obligatoria
+
+1. Partir de `main` actualizado y crear feature branch.
+2. Ejecutar tests, build y self-test.
+3. Desplegar la feature en STG, aplicar migraciones y validar Admin/API.
+4. Validar Guardian TEST, RemoteConfig, misión, telemetría y, si aplica, release/updater/rollback en STG.
+5. Con aprobación manual, mergear a `main` y desplegar PROD.
+6. Validar primero con PC TEST contra PROD; continuar sólo después con el dispositivo productivo final.
+
+Nunca se utiliza una feature branch sobre PROD para una vista previa visual o funcional.
+
+## Stage 3 — Admin y métricas (feature en desarrollo)
+
+La rama `feature/stage3-admin-metrics` incorpora Stage 3A/3B y **no está en PROD**. Debe validarse exclusivamente en STG antes de cualquier promoción.
+
+- Admin con cards compactas: `display_name` principal, hostname secundario, estado operativo y acciones remotas agrupadas.
+- Configuración unificada de nombre visible, intervalo, zona horaria IANA, skills y perfil privado.
+- Activity con fecha y hora local del dispositivo, filtros de período, categorías humanas, eventos técnicos opcionales y JSON desplegable.
+- Métricas agregadas server-side por `mission_id`, con compatibilidad `missionId`, reintentos deduplicados, drill-down Global → Categoría → Nivel → Skill y variantes bajo demanda.
+- La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC.
+
+La implementación no cambia categorías, niveles ni skills educativas, ni el comportamiento validado de LockWindow, RemoteConfig, perfil privado, rotación o updater. No crear releases de Stage 3 en PROD; durante su validación usar únicamente releases con sufijo STG, según el flujo anterior.

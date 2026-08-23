@@ -14,9 +14,14 @@ class Settings(BaseSettings):
     device_bootstrap_token: str = "change_me"
     guardian_admin_host: str = "guardian.example.com"
     guardian_admin_timezone: str = ""
+    guardian_environment: str = "PROD"
     releases_dir: Path = Path("/data/guardian/releases")
     online_threshold_seconds: int = 180
     update_command_timeout_seconds: int = 900
+
+    @property
+    def admin_title(self) -> str:
+        return "Guardian Admin — STG" if self.guardian_environment.strip().upper() == "STG" else "Guardian Admin"
 
 
 settings = Settings()
