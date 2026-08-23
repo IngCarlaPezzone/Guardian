@@ -588,9 +588,9 @@ merge main
 ↓
 deploy PROD
 ↓
-PC TEST/Carla en PROD
+PC TEST en PROD
 ↓
-recién después Guille
+recién después dispositivo productivo final
 ```
 
 Reglas no negociables:
@@ -599,7 +599,7 @@ Reglas no negociables:
 - Toda migración se prueba primero en STG.
 - Cambios de release/updater se prueban primero en STG cuando sean relevantes.
 - STG usa sólo datos y perfiles ficticios; jamás se copia una DB, evento o perfil de PROD.
-- Guille nunca es el primer dispositivo de validación y nunca se registra en STG.
+- El dispositivo productivo final nunca es el primer dispositivo de validación y nunca se registra en STG.
 - Los scripts `*-stg.ps1` operan únicamente el proyecto Compose `guardian-stg`; no sustituirlos por scripts de PROD.
 
 ### Versionado y promoción
@@ -609,7 +609,7 @@ Reglas no negociables:
 - Nunca usar una versión sin sufijo en STG salvo para reproducir explícitamente una versión PROD existente.
 - Al aprobar una feature en STG, crear una Release Candidate con la próxima versión de PROD: si PROD es `0.4.1`, usar `0.4.2-rc`. Probarla integralmente en STG, incluyendo updater cuando corresponda.
 - Si la RC aprueba, publicar `0.4.2` en PROD. Nunca publicar versiones `-staging-*` ni `-rc` en PROD.
-- El rollout de PROD es obligatorio: **PC TEST/Carla → validar operación → PC Guille**.
+- El rollout de PROD es obligatorio: **PC TEST → validar operación → dispositivo productivo final**.
 
 ### Importación sanitizada de telemetría
 

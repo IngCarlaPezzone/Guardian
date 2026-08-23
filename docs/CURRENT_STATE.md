@@ -76,7 +76,7 @@ PROD actual usa SemVer normal: `0.4.1`. Mientras una feature está en desarrollo
 
 No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. Al aprobar la feature, crear una RC basada en la próxima versión productiva: si PROD es `0.4.1`, probar `0.4.2-rc` integralmente en STG —incluido updater cuando aplique—. Si aprueba, publicar `0.4.2` en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
 
-El rollout obligatorio en PROD es: **PC TEST/Carla → validar operación → PC Guille**.
+El rollout obligatorio en PROD es: **PC TEST → validar operación → dispositivo productivo final**.
 
 ## Importación sanitizada de telemetría PROD → STG
 
@@ -98,6 +98,8 @@ La whitelist por defecto es `MissionStarted`, `MissionFailed` y `MissionSolved`.
 
 La validación manual de STG ya confirmó: aislamiento PROD/STG; reset STG sin afectar PROD; cliente WPF real contra STG; RemoteConfig; misión manual; telemetría; pause/resume; publicación de release STG; upgrade real `0.4.1 → 0.4.2`; downgrade real `0.4.2 → 0.4.1`; y PROD no afectado.
 
+La importación sanitizada también fue validada manualmente contra PROD: la primera ejecución importó **281 eventos sanitizados**; la segunda importó **0 eventos nuevos**, confirmando idempotencia; y una ejecución posterior con `-Replace` importó **282 eventos**, porque PROD generó un evento nuevo entre corridas. No se copiaron identidades reales ni payloads completos, y PROD permaneció operativo.
+
 ## Promoción obligatoria
 
 1. Partir de `main` actualizado y crear feature branch.
@@ -105,6 +107,6 @@ La validación manual de STG ya confirmó: aislamiento PROD/STG; reset STG sin a
 3. Desplegar la feature en STG, aplicar migraciones y validar Admin/API.
 4. Validar Guardian TEST, RemoteConfig, misión, telemetría y, si aplica, release/updater/rollback en STG.
 5. Con aprobación manual, mergear a `main` y desplegar PROD.
-6. Validar primero con PC TEST/Carla contra PROD; Guille sólo después.
+6. Validar primero con PC TEST contra PROD; continuar sólo después con el dispositivo productivo final.
 
 Nunca se utiliza una feature branch sobre PROD para una vista previa visual o funcional.
