@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+- Corrige la persistencia de versión tras reiniciar Windows: cliente, updater, instaladores, watchdog y autoarranque usan una única ubicación canónica.
+- Repara idempotentemente `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Guardian` cuando conserva una ruta histórica o temporal.
+- Al ejecutar Guardian desde un ZIP, instala sus binarios en la ruta canónica antes de registrar startup.
+- Conserva un home explícito de STG mediante `--home`, evitando que un reboot de un cliente TEST use la instalación local de PROD.
+- Añade eventos técnicos de inicio y de colisión de instancia con ruta anonimizada, resultado de reparación y PID.
+- Valida en STG update, dos reboots y reparación de una entrada histórica simulada.
+
 ## 0.4.1
 
 - Cierra la iteración Mission System v2, validada manualmente en PC TEST y lista para probar actualización remota en PC TEST.

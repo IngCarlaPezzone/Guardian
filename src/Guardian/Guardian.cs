@@ -18,6 +18,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using WinForms = System.Windows.Forms;
+using GuardianShared;
 
 namespace Guardian
 {
@@ -30,6 +31,11 @@ namespace Guardian
             try
             {
                 var command = CommandLine.Parse(args);
+                var requestedHome = command.Value("--home");
+                if (!string.IsNullOrWhiteSpace(requestedHome))
+                {
+                    Environment.SetEnvironmentVariable("GUARDIAN_HOME", requestedHome, EnvironmentVariableTarget.Process);
+                }
                 if (command.Has("--self-test"))
                 {
                     NativeConsole.Attach();
@@ -38,6 +44,7 @@ namespace Guardian
                 if (command.Has("--install-startup"))
                 {
                     NativeConsole.Attach();
+                    CanonicalInstallation.EnsureCurrentBuild();
                     return StartupManager.Install();
                 }
                 if (command.Has("--uninstall-startup"))
@@ -68,14 +75,33 @@ namespace Guardian
                 }
 
                 var config = GuardianConfig.Load();
-                instanceGuard = SingleInstanceGuard.TryAcquire();
-                if (!instanceGuard.IsAcquired) return 0;
-
+                var installation = CanonicalInstallation.EnsureCurrentBuild();
                 var logger = new EventLogger(config);
+                var startup = StartupManager.EnsureCanonicalRegistration(config.AutoStartEnabled);
+                instanceGuard = SingleInstanceGuard.TryAcquire();
+                if (!instanceGuard.IsAcquired)
+                {
+                    logger.Log("GuardianDuplicateInstanceSkipped", new Dictionary<string, object>
+                    {
+                        { "client_version", AppInfo.Version },
+                        { "executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.ExecutingExecutablePath) },
+                        { "canonical_executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.GuardianExecutablePath) },
+                        { "startup_command", GuardianInstallPaths.RedactForTelemetry(startup.ConfiguredCommand) },
+                        { "startup_repair_result", startup.Result },
+                        { "process_id", Process.GetCurrentProcess().Id }
+                    });
+                    return 0;
+                }
                 logger.Log("GuardianStarted", new Dictionary<string, object>
                 {
                     { "version", AppInfo.Version },
-                    { "mode", command.Has("--minimized") ? "startup" : "manual" }
+                    { "mode", command.Has("--minimized") ? "startup" : "manual" },
+                    { "executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.ExecutingExecutablePath) },
+                    { "canonical_executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.GuardianExecutablePath) },
+                    { "installation_result", installation.Result },
+                    { "startup_command", GuardianInstallPaths.RedactForTelemetry(startup.ConfiguredCommand) },
+                    { "startup_repair_result", startup.Result },
+                    { "process_id", Process.GetCurrentProcess().Id }
                 });
 
                 if (config.WatchdogEnabled && !command.Has("--no-watchdog"))
@@ -135,7 +161,12 @@ namespace Guardian
     {
         public const string Name = "Guardian";
         public static readonly string Version = VersionInfo.Version;
-        public static readonly string AppDataDir = ResolveAppDataDir();
+        // Do not cache this path: --home is applied at the beginning of Main
+        // and must be honored even when the CLR initializes this type early.
+        public static string AppDataDir
+        {
+            get { return ResolveAppDataDir(); }
+        }
         public static string IntentionalExitFlagPath
         {
             get { return Path.Combine(AppDataDir, "intentional-exit.flag"); }
@@ -147,10 +178,44 @@ namespace Guardian
 
         private static string ResolveAppDataDir()
         {
-            var overrideDir = Environment.GetEnvironmentVariable("GUARDIAN_HOME");
-            if (!string.IsNullOrWhiteSpace(overrideDir)) return overrideDir;
+            return GuardianInstallPaths.InstallDirectory;
+        }
+    }
 
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Guardian");
+    public sealed class CanonicalInstallationResult
+    {
+        public string Result { get; set; }
+    }
+
+    public static class CanonicalInstallation
+    {
+        // A release may be launched directly from an extracted ZIP. Copy its
+        // binaries before enabling startup so reboot never depends on that ZIP.
+        public static CanonicalInstallationResult EnsureCurrentBuild()
+        {
+            var result = new CanonicalInstallationResult { Result = "already_canonical" };
+            try
+            {
+                var source = GuardianInstallPaths.ExecutingExecutablePath;
+                var destination = GuardianInstallPaths.GuardianExecutablePath;
+                if (GuardianInstallPaths.SamePath(source, destination)) return result;
+
+                Directory.CreateDirectory(GuardianInstallPaths.InstallDirectory);
+                File.Copy(source, destination, true);
+                CopySiblingIfPresent(source + ".config", destination + ".config");
+                CopySiblingIfPresent(Path.Combine(Path.GetDirectoryName(source), "GuardianUpdater.exe"), GuardianInstallPaths.UpdaterExecutablePath);
+                result.Result = "migrated_to_canonical";
+            }
+            catch (Exception ex)
+            {
+                result.Result = "migration_failed:" + ex.GetType().Name;
+            }
+            return result;
+        }
+
+        private static void CopySiblingIfPresent(string source, string destination)
+        {
+            if (File.Exists(source)) File.Copy(source, destination, true);
         }
     }
 
@@ -1216,10 +1281,17 @@ namespace Guardian
             {
                 try
                 {
-                    var exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                    var updater = !string.IsNullOrWhiteSpace(_config.UpdaterPath)
-                        ? _config.UpdaterPath
-                        : Path.Combine(exeDir ?? AppInfo.AppDataDir, "GuardianUpdater.exe");
+                    var updater = GuardianInstallPaths.UpdaterExecutablePath;
+                    if (!string.IsNullOrWhiteSpace(_config.UpdaterPath) && !GuardianInstallPaths.SamePath(_config.UpdaterPath, updater))
+                    {
+                        _logger.Log("UpdaterPathMigrated", new Dictionary<string, object>
+                        {
+                            { "configured_updater_path", GuardianInstallPaths.RedactForTelemetry(_config.UpdaterPath) },
+                            { "canonical_updater_path", GuardianInstallPaths.RedactForTelemetry(updater) }
+                        });
+                        _config.UpdaterPath = "";
+                        _config.Save();
+                    }
                     if (!File.Exists(updater))
                     {
                         _logger.Log("UpdateFailed", new Dictionary<string, object> { { "message", "GuardianUpdater.exe not found" } });
@@ -2776,12 +2848,9 @@ namespace Guardian
         {
             try
             {
-                var exePath = Assembly.GetExecutingAssembly().Location;
-                using (var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
-                {
-                    if (key == null) throw new InvalidOperationException("HKCU Run key no disponible.");
-                    key.SetValue(ValueName, Quote(exePath) + " --minimized");
-                }
+                CanonicalInstallation.EnsureCurrentBuild();
+                var registration = EnsureCanonicalRegistration(true);
+                if (registration.Result.StartsWith("repair_failed:", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException(registration.Result);
                 error = "";
                 return true;
             }
@@ -2818,10 +2887,52 @@ namespace Guardian
             }
         }
 
+        public static StartupRegistrationResult EnsureCanonicalRegistration(bool enabled)
+        {
+            var result = new StartupRegistrationResult { Result = enabled ? "already_canonical" : "disabled" };
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
+                {
+                    var current = key.GetValue(ValueName) as string ?? "";
+                    result.ConfiguredCommand = current;
+                    var expected = ExpectedCommand();
+                    if (!enabled) return result;
+                    if (!string.Equals(current, expected, StringComparison.OrdinalIgnoreCase))
+                    {
+                        key.SetValue(ValueName, expected, RegistryValueKind.String);
+                        result.Result = string.IsNullOrWhiteSpace(current) ? "created_canonical" : "repaired_to_canonical";
+                        result.ConfiguredCommand = expected;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Result = "repair_failed:" + ex.GetType().Name;
+            }
+            return result;
+        }
+
         private static string Quote(string value)
         {
             return "\"" + value.Replace("\"", "\\\"") + "\"";
         }
+
+        private static string ExpectedCommand()
+        {
+            var command = Quote(GuardianInstallPaths.GuardianExecutablePath) + " --minimized";
+            if (GuardianInstallPaths.HasExplicitHome)
+            {
+                command += " --home " + Quote(GuardianInstallPaths.InstallDirectory);
+            }
+            return command;
+        }
+    }
+
+    public sealed class StartupRegistrationResult
+    {
+        public string ConfiguredCommand { get; set; }
+        public string Result { get; set; }
     }
 
     public static class Watchdog
@@ -2830,7 +2941,7 @@ namespace Guardian
         {
             try
             {
-                var exe = Assembly.GetExecutingAssembly().Location;
+                var exe = GuardianInstallPaths.GuardianExecutablePath;
                 var args = "--watchdog " + Process.GetCurrentProcess().Id + " " + Quote(exe);
                 var psi = new ProcessStartInfo(exe, args)
                 {
@@ -2952,6 +3063,15 @@ namespace Guardian
                 if (string.Equals(item, value, StringComparison.OrdinalIgnoreCase)) return true;
             }
             return false;
+        }
+
+        public string Value(string name)
+        {
+            for (var i = 0; i < Values.Count - 1; i++)
+            {
+                if (string.Equals(Values[i], name, StringComparison.OrdinalIgnoreCase)) return Values[i + 1];
+            }
+            return "";
         }
     }
 

@@ -5,6 +5,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $root "src\Guardian\Guardian.cs"
 $missionSrc = Join-Path $root "src\Guardian\MissionSystem.cs"
+$installPathsSrc = Join-Path $root "src\Guardian\GuardianInstallPaths.cs"
 $updaterSrc = Join-Path $root "updater\src\GuardianUpdater.cs"
 $outDir = Join-Path $root "dist"
 $objDir = Join-Path $root "obj"
@@ -48,6 +49,7 @@ Set-Content -Encoding UTF8 -Path $updaterVersionSrc -Value "namespace GuardianUp
   /reference:System.Web.Extensions.dll `
   $src `
   $missionSrc `
+  $installPathsSrc `
   $guardianVersionSrc
 
 if ($LASTEXITCODE -ne 0) {
@@ -63,6 +65,7 @@ Copy-Item -Force (Join-Path $root "src\Guardian\App.config") "$out.config"
   /reference:System.IO.Compression.dll `
   /reference:System.IO.Compression.FileSystem.dll `
   $updaterSrc `
+  $installPathsSrc `
   $updaterVersionSrc
 
 if ($LASTEXITCODE -ne 0) {

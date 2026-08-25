@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
 using System.Threading;
+using GuardianShared;
 
 namespace GuardianUpdater
 {
@@ -256,7 +257,7 @@ namespace GuardianUpdater
 
         private static void StartGuardian(string appDir)
         {
-            var exe = Path.Combine(appDir, "Guardian.exe");
+            var exe = GuardianInstallPaths.GuardianExecutablePath;
             if (!File.Exists(exe)) throw new FileNotFoundException("Guardian.exe not found", exe);
             Process.Start(new ProcessStartInfo(exe)
             {
@@ -357,9 +358,7 @@ namespace GuardianUpdater
 
         private static string ResolveAppDataDir()
         {
-            var overrideDir = Environment.GetEnvironmentVariable("GUARDIAN_HOME");
-            if (!string.IsNullOrWhiteSpace(overrideDir)) return overrideDir;
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Guardian");
+            return GuardianInstallPaths.InstallDirectory;
         }
     }
 

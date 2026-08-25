@@ -79,7 +79,7 @@ if exist "%CONFIG_PATH%" (
 )
 
 set "AUTOSTART_OK=1"
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v Guardian /t REG_SZ /d "\"%APP_DIR%\Guardian.exe\"" /f >nul 2>nul
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v Guardian /t REG_SZ /d "\"%APP_DIR%\Guardian.exe\" --minimized" /f >nul 2>nul
 if errorlevel 1 (
   set "AUTOSTART_OK=0"
   echo Advertencia: no se pudo registrar Guardian para autoarranque.

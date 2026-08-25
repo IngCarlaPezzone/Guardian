@@ -9,6 +9,10 @@ $releaseDir = Join-Path $root "release"
 $packageDir = Join-Path $releaseDir "GuardianInstaller"
 $zipPath = Join-Path $releaseDir "GuardianInstaller.zip"
 $setupOut = Join-Path $releaseDir "GuardianSetup.exe"
+$installPathsSrc = Join-Path $root "src\Guardian\GuardianInstallPaths.cs"
+$guardianResource = "/resource:$(Join-Path $root 'dist\Guardian.exe'),Guardian.exe"
+$guardianConfigResource = "/resource:$(Join-Path $root 'dist\Guardian.exe.config'),Guardian.exe.config"
+$updaterResource = "/resource:$(Join-Path $root 'dist\GuardianUpdater.exe'),GuardianUpdater.exe"
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 
 & (Join-Path $PSScriptRoot "build.ps1")
@@ -38,9 +42,10 @@ if ($IncludeExperimentalExe) {
     /target:winexe `
     /out:$setupOut `
     /reference:System.Windows.Forms.dll `
-    /resource:"$(Join-Path $root 'dist\Guardian.exe')",Guardian.exe `
-    /resource:"$(Join-Path $root 'dist\Guardian.exe.config')",Guardian.exe.config `
-    /resource:"$(Join-Path $root 'dist\GuardianUpdater.exe')",GuardianUpdater.exe `
+    $guardianResource `
+    $guardianConfigResource `
+    $updaterResource `
+    $installPathsSrc `
     (Join-Path $root "installer\GuardianSetup.cs")
 
   if ($LASTEXITCODE -ne 0) {

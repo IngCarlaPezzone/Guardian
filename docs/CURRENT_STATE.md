@@ -70,6 +70,17 @@ Para generar, copiar y registrar una release sólo en STG:
 
 El artefacto se monta desde `releases-stg/` y el registro se guarda en la DB STG. Nunca aparece en Admin PROD ni puede ser seleccionado por un dispositivo PROD.
 
+### Validación RC de persistencia tras reboot
+
+La RC `0.4.2-rc.2` validó en un cliente TEST STG el flujo completo `0.4.1 → 0.4.2-rc.2 → reboot → 0.4.2-rc.2 → segundo reboot → 0.4.2-rc.2`.
+
+- El valor `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Guardian` apunta a la ruta canónica y usa `--minimized`.
+- Para un home STG explícito, la misma entrada incluye `--home <directorio-STG>`; así un reboot no cae en la instalación local de PROD.
+- Se comprobó la reparación idempotente (`already_canonical`) y la reparación de una ruta temporal histórica simulada (`repaired_to_canonical`), seguida de reboot exitoso.
+- Se comprobó el arranque local sin API disponible; cuando STG volvió a estar disponible, el cliente reanudó heartbeats sin requerir inicio manual.
+
+`0.4.2-rc.1` queda descartada para promoción: resolvía el home explícito demasiado tarde durante el proceso de arranque. No promover esa RC a PROD.
+
 ## Versionado y promoción
 
 PROD actual usa SemVer normal: `0.4.1`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
