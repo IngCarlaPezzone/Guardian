@@ -24,6 +24,27 @@ Detener sin borrar volumenes:
 .\scripts\stop-server.ps1
 ```
 
+## Inicio automático tras reiniciar Windows
+
+Para que el servidor vuelva a estar disponible después de apagar o reiniciar la PC:
+
+1. En Docker Desktop, activar **Start Docker Desktop when you sign in**.
+2. Los servicios de Guardian usan la política Compose `restart: unless-stopped`. Docker los inicia nuevamente cuando su motor queda disponible, pero respeta una detención manual explícita mediante `docker compose stop`.
+
+La API puede demorar algunos segundos en volver: PostgreSQL debe pasar su healthcheck antes de iniciar `guardian-app`; si el perfil Cloudflare está habilitado, `cloudflared` espera el healthcheck de la API. Guardian Client sigue funcionando localmente durante ese intervalo y reanuda heartbeats cuando la API responde.
+
+Después de introducir o actualizar esta configuración, recrear los contenedores una vez:
+
+```powershell
+.\scripts\start-server.ps1
+```
+
+Para STG, usar su proyecto aislado:
+
+```powershell
+.\scripts\start-stg.ps1
+```
+
 Backup local:
 
 ```powershell

@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -24,6 +25,7 @@ services:
       RELEASES_DIR: /data/guardian/releases
     ports:
       - "8080:8080"
+    restart: unless-stopped
     volumes:
       - ../releases:/data/guardian/releases
     depends_on:
@@ -37,6 +39,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
+    restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     profiles: ["cloudflare"]
     depends_on:

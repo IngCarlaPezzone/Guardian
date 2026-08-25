@@ -11,6 +11,8 @@ Guardian opera con dos entornos aislados.
 
 STG no comparte contenedores, volumen PostgreSQL, base, registry de dispositivos, RemoteConfig, telemetría, comandos ni releases con PROD. El Admin STG muestra persistentemente **Guardian Admin — STG**. PROD no muestra ese rótulo.
 
+Los servicios de ambos Compose usan `restart: unless-stopped`: al iniciar Docker Desktop tras iniciar sesión en Windows, Docker recupera PostgreSQL, API y —cuando corresponda— Cloudflare. Esta política no anula una detención manual explícita.
+
 ## Configuración
 
 - `.env` es exclusivamente PROD y no se versiona.
