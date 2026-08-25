@@ -1,3 +1,5 @@
+name: guardian-prod
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -48,3 +50,6 @@ services:
 
 volumes:
   guardian_postgres_data:
+    # Preserve the existing PROD database while the Compose project is renamed.
+    name: deploy_guardian_postgres_data
+    external: true

@@ -45,6 +45,14 @@ Para STG, usar su proyecto aislado:
 .\scripts\start-stg.ps1
 ```
 
+Si el acceso externo de PROD usa Cloudflare Tunnel, iniciarlo una vez con su perfil:
+
+```powershell
+docker compose --env-file .env -f deploy/docker-compose.yml --profile cloudflare up -d cloudflared
+```
+
+Después también se recupera automáticamente con Docker Desktop. El túnel no es necesario para el Admin local en `http://localhost:8080`.
+
 Backup local:
 
 ```powershell

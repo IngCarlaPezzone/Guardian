@@ -6,12 +6,14 @@ Guardian opera con dos entornos aislados.
 
 | Entorno | Compose | Servicios | Puerto Admin/API | Estado mutable |
 | --- | --- | --- | --- | --- |
-| PROD | `deploy/docker-compose.yml` | `postgres`, `guardian-app` (y `cloudflared` opcional) | `8080` | `.env`, `guardian_postgres_data`, `releases/` |
+| PROD | `deploy/docker-compose.yml` (`guardian-prod`) | `postgres`, `guardian-app` (y `cloudflared` opcional) | `8080` | `.env`, `deploy_guardian_postgres_data`, `releases/` |
 | STG | `deploy/docker-compose.stg.yml` | `guardian-stg-db`, `guardian-stg-app` | `8081` | `.env.stg`, `guardian_stg_postgres_data`, `releases-stg/` |
 
 STG no comparte contenedores, volumen PostgreSQL, base, registry de dispositivos, RemoteConfig, telemetría, comandos ni releases con PROD. El Admin STG muestra persistentemente **Guardian Admin — STG**. PROD no muestra ese rótulo.
 
 Los servicios de ambos Compose usan `restart: unless-stopped`: al iniciar Docker Desktop tras iniciar sesión en Windows, Docker recupera PostgreSQL, API y —cuando corresponda— Cloudflare. Esta política no anula una detención manual explícita.
+
+El proyecto Compose de PROD se llama `guardian-prod`. El volumen histórico externo de PostgreSQL conserva explícitamente el nombre físico `deploy_guardian_postgres_data` para que el renombrado de contenedores no cree una base vacía ni requiera migrar datos.
 
 ## Configuración
 
