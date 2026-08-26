@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -2033,6 +2034,9 @@ namespace Guardian
         private readonly TextBox _answerBox;
         private readonly TextBlock _feedback;
         private readonly TextBlock _promptText;
+        private readonly TextBlock _routine;
+        private readonly StackPanel _helpPanel;
+        private readonly Button _helpButton;
         private readonly Button _exitButton;
         private readonly Grid _adminOverlay;
         private readonly TextBox _adminUserBox;
@@ -2042,6 +2046,13 @@ namespace Guardian
         private bool _canExit;
         private bool _unlockRequested;
         private int _attempt = 1;
+        private int _maxHelpLevelUsed;
+        private int _helpRequestsCount;
+        private bool _helpLevel2Shown;
+        private bool _helpLevel3Unlocked;
+        private bool _hadOrthographicError;
+        private int _writingCorrectionCount;
+        private bool _writingAnswerRevealed;
 
         public event Action UnlockRequested;
         public event Action AdminShutdownRequested;
@@ -2097,7 +2108,6 @@ namespace Guardian
             });
             _promptText = new TextBlock
             {
-                Text = mission.Prompt,
                 Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39)),
                 FontSize = 42,
                 FontWeight = FontWeights.Bold,
@@ -2106,6 +2116,7 @@ namespace Guardian
                 MaxWidth = 640,
                 Margin = new Thickness(0, 0, 0, 18)
             };
+            RenderRichText(_promptText, mission.Prompt, mission.PromptBoldTerms);
             panel.Children.Add(_promptText);
             _answerBox = new TextBox
             {
@@ -2141,6 +2152,15 @@ namespace Guardian
                 MinHeight = 28
             };
             panel.Children.Add(_feedback);
+
+            _routine = new TextBlock { Text = "🔄 Probemos otra vez.\n👀 MIRO  →  🧠 PIENSO  →  ✍️ RESPONDO", Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), FontSize = 17, TextAlignment = TextAlignment.Center, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 10) };
+            panel.Children.Add(_routine);
+            _helpPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+            panel.Children.Add(_helpPanel);
+            _helpButton = new Button { FontSize = 16, Padding = new Thickness(14, 7, 14, 7), HorizontalAlignment = HorizontalAlignment.Center, Visibility = Visibility.Collapsed };
+            _helpButton.Click += delegate { RequestNextHelp(); };
+            panel.Children.Add(_helpButton);
+            UpdateHelpButton();
 
             card.Child = panel;
             Grid.SetRow(card, 1);
@@ -2263,13 +2283,31 @@ namespace Guardian
 
         private void CheckAnswer()
         {
-            var result = MissionValidator.Validate(_answerBox.Text, _mission);
+            var analysis = MissionValidator.Analyze(_answerBox.Text, _mission);
+            var result = analysis.Result;
             if (result == MissionAnswerResult.Invalid)
             {
                 _feedback.Text = "Revis\u00e1 la respuesta e intent\u00e1 de nuevo.";
-                var invalidPayload = MissionTelemetry.Payload(_mission, _attempt);
+                var invalidPayload = TelemetryPayload();
                 invalidPayload["reason"] = "invalid_input";
                 _logger.Log("MissionFailed", invalidPayload);
+                _attempt++;
+                return;
+            }
+
+            if (result == MissionAnswerResult.OrthographicNearMatch)
+            {
+                _hadOrthographicError = true;
+                _writingCorrectionCount++;
+                var stage = _writingCorrectionCount >= 3 ? 3 : _writingCorrectionCount;
+                if (stage == 1) _feedback.Text = "✏️ Parece que sabés la respuesta. Revisá cómo la escribiste.";
+                else if (stage == 2) _feedback.Text = "✏️ Empieza con " + PrefixHint(analysis.MatchedAcceptedAnswer) + "...";
+                else { _writingAnswerRevealed = true; _feedback.Text = "✏️ Se escribe " + analysis.MatchedAcceptedAnswer + ". Ahora escribilo vos correctamente."; }
+                _answerBox.SelectAll();
+                var spellingPayload = TelemetryPayload(); spellingPayload["reason"] = "orthographic_error";
+                _logger.Log("MissionFailed", spellingPayload);
+                var hintPayload = TelemetryPayload(); hintPayload["writing_hint_stage"] = stage;
+                _logger.Log("MissionWritingHintShown", hintPayload);
                 _attempt++;
                 return;
             }
@@ -2277,23 +2315,65 @@ namespace Guardian
             if (result == MissionAnswerResult.Wrong)
             {
                 _feedback.Text = "Todav\u00eda no. Prob\u00e1 de nuevo.";
+                _routine.Visibility = Visibility.Visible;
+                if (_helpLevel2Shown) _helpLevel3Unlocked = true;
+                UpdateHelpButton();
                 _answerBox.SelectAll();
-                var failedPayload = MissionTelemetry.Payload(_mission, _attempt);
+                var failedPayload = TelemetryPayload();
                 failedPayload["reason"] = "wrong_answer";
                 _logger.Log("MissionFailed", failedPayload);
                 _attempt++;
                 return;
             }
 
-            _logger.Log("MissionSolved", MissionTelemetry.Payload(_mission, _attempt));
+            _logger.Log("MissionSolved", TelemetryPayload());
 
             if (!_canExit)
             {
                 _canExit = true;
                 _exitButton.Visibility = Visibility.Visible;
-                _logger.Log("ExitAvailable", MissionTelemetry.Payload(_mission, _attempt));
+                _logger.Log("ExitAvailable", TelemetryPayload());
             }
             RequestUnlock();
+        }
+
+        private Dictionary<string, object> TelemetryPayload() { return MissionTelemetry.Payload(_mission, _attempt, _maxHelpLevelUsed, _helpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed); }
+
+        private void RequestNextHelp()
+        {
+            var next = _maxHelpLevelUsed + 1;
+            if (next == 3 && !_helpLevel3Unlocked) return;
+            MissionHelpStep step = null;
+            if (_mission.HelpSteps != null) foreach (var candidate in _mission.HelpSteps) if (candidate.HelpLevel == next) { step = candidate; break; }
+            if (step == null) return;
+            var text = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
+            RenderRichText(text, (next == 1 ? "❓ " : next == 2 ? "🧩 " : "🧭 ") + step.Text, step.BoldTerms);
+            _helpPanel.Children.Add(text);
+            _maxHelpLevelUsed = next; _helpRequestsCount++; if (next == 2) _helpLevel2Shown = true;
+            var payload = TelemetryPayload(); payload["help_level"] = next;
+            _logger.Log("MissionHelpRequested", payload);
+            UpdateHelpButton();
+        }
+
+        private void UpdateHelpButton()
+        {
+            if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || _maxHelpLevelUsed >= 3) { _helpButton.Visibility = Visibility.Collapsed; return; }
+            var next = _maxHelpLevelUsed + 1;
+            if (next == 3 && !_helpLevel3Unlocked) { _helpButton.Visibility = Visibility.Collapsed; return; }
+            _helpButton.Content = next == 1 ? "❓ Decilo de otra manera" : next == 2 ? "🧩 Dame una pista" : "🧭 Guiame un poco más";
+            _helpButton.Visibility = Visibility.Visible;
+        }
+
+        private static string PrefixHint(string value) { if (string.IsNullOrWhiteSpace(value)) return "la palabra"; var count = value.Length >= 4 ? 3 : 1; return value.Substring(0, count); }
+
+        internal static void RenderRichText(TextBlock block, string text, IList<string> terms)
+        {
+            block.Inlines.Clear(); if (string.IsNullOrEmpty(text)) return;
+            var matches = new List<Tuple<int, int>>();
+            if (terms != null) foreach (var term in terms) { if (string.IsNullOrWhiteSpace(term)) continue; var start = 0; while (start < text.Length) { var index = text.IndexOf(term, start, StringComparison.OrdinalIgnoreCase); if (index < 0) break; matches.Add(Tuple.Create(index, term.Length)); start = index + term.Length; } }
+            matches.Sort(delegate(Tuple<int,int> a, Tuple<int,int> b) { return a.Item1.CompareTo(b.Item1); }); int cursor = 0;
+            foreach (var match in matches) { if (match.Item1 < cursor) continue; if (match.Item1 > cursor) block.Inlines.Add(new Run(text.Substring(cursor, match.Item1-cursor))); block.Inlines.Add(new Run(text.Substring(match.Item1, match.Item2)) { FontWeight = FontWeights.Bold }); cursor = match.Item1 + match.Item2; }
+            if (cursor < text.Length) block.Inlines.Add(new Run(text.Substring(cursor)));
         }
 
         private void RequestUnlock()
@@ -2361,21 +2441,42 @@ namespace Guardian
     {
         Invalid,
         Wrong,
+        OrthographicNearMatch,
         Correct
     }
+
+    public sealed class MissionAnswerAnalysis { public MissionAnswerResult Result { get; set; } public string MatchedAcceptedAnswer { get; set; } public int EditDistance { get; set; } }
 
     public static class MissionValidator
     {
         public static MissionAnswerResult Validate(string input, Mission mission)
         {
-            if (string.IsNullOrWhiteSpace(input) || mission == null || mission.AcceptedAnswers == null) return MissionAnswerResult.Invalid;
+            return Analyze(input, mission).Result;
+        }
+        public static MissionAnswerAnalysis Analyze(string input, Mission mission)
+        {
+            var analysis = new MissionAnswerAnalysis { Result = MissionAnswerResult.Invalid };
+            if (string.IsNullOrWhiteSpace(input) || mission == null || mission.AcceptedAnswers == null) return analysis;
             var normalized = MissionText.Normalize(input);
             foreach (var answer in mission.AcceptedAnswers)
             {
-                if (normalized == MissionText.Normalize(answer)) return MissionAnswerResult.Correct;
+                if (normalized == MissionText.Normalize(answer)) { analysis.Result = MissionAnswerResult.Correct; return analysis; }
             }
-            return MissionAnswerResult.Wrong;
+            var best = Int32.MaxValue; string accepted = null; bool ambiguous = false;
+            foreach (var answer in mission.AcceptedAnswers)
+            {
+                var expected = MissionText.Normalize(answer);
+                if (expected.Length < 4 || !IsText(expected) || !IsText(normalized)) continue;
+                var distance = DamerauLevenshtein(normalized, expected); var limit = expected.Length <= 5 ? 1 : 2;
+                if (distance > limit || (expected.Length >= 6 && ((double)distance / expected.Length) > 0.30)) continue;
+                if (distance < best) { best = distance; accepted = answer; ambiguous = false; } else if (distance == best && MissionText.Normalize(answer) != MissionText.Normalize(accepted)) ambiguous = true;
+            }
+            if (accepted != null && !ambiguous) { analysis.Result=MissionAnswerResult.OrthographicNearMatch; analysis.MatchedAcceptedAnswer=accepted; analysis.EditDistance=best; return analysis; }
+            analysis.Result = MissionAnswerResult.Wrong; return analysis;
         }
+
+        private static bool IsText(string text) { foreach (var c in text) if (!char.IsLetter(c) && c != ' ') return false; return text.Length > 0; }
+        internal static int DamerauLevenshtein(string left, string right) { var d = new int[left.Length + 1, right.Length + 1]; for (var i=0;i<=left.Length;i++) d[i,0]=i; for (var j=0;j<=right.Length;j++) d[0,j]=j; for (var i=1;i<=left.Length;i++) for (var j=1;j<=right.Length;j++) { var cost=left[i-1]==right[j-1]?0:1; d[i,j]=Math.Min(Math.Min(d[i-1,j]+1,d[i,j-1]+1),d[i-1,j-1]+cost); if(i>1&&j>1&&left[i-1]==right[j-2]&&left[i-2]==right[j-1]) d[i,j]=Math.Min(d[i,j],d[i-2,j-2]+cost); } return d[left.Length,right.Length]; }
 
         public static MissionAnswerResult Validate(string input, int expected, out int answer)
         {
@@ -3113,6 +3214,16 @@ namespace Guardian
             if (MissionValidator.Validate("abc", 12, out answer) != MissionAnswerResult.Invalid) failures.Add("text answer should be invalid");
             if (MissionValidator.Validate("11", 12, out answer) != MissionAnswerResult.Wrong) failures.Add("wrong answer should be wrong");
             if (MissionValidator.Validate("12", 12, out answer) != MissionAnswerResult.Correct) failures.Add("correct answer should be correct");
+            var autumn = new Mission { AcceptedAnswers = new List<string> { "otoño" } };
+            var surname = new Mission { AcceptedAnswers = new List<string> { "Pereira" } };
+            var season = new Mission { AcceptedAnswers = new List<string> { "invierno" } };
+            var number = new Mission { AcceptedAnswers = new List<string> { "7" } };
+            if (MissionValidator.Validate("otño", autumn) != MissionAnswerResult.OrthographicNearMatch) failures.Add("missing-letter autumn should be spelling near match");
+            if (MissionValidator.Validate("OTONO", autumn) != MissionAnswerResult.Correct) failures.Add("accent normalization should remain correct");
+            if (MissionValidator.Validate("Pereir", surname) != MissionAnswerResult.OrthographicNearMatch) failures.Add("sample surname should be spelling near match");
+            if (MissionValidator.Validate("Bauti", surname) != MissionAnswerResult.Wrong) failures.Add("distant text must be wrong");
+            if (MissionValidator.Validate("verano", season) != MissionAnswerResult.Wrong) failures.Add("semantic season mismatch must be wrong");
+            if (MissionValidator.Validate("8", number) != MissionAnswerResult.Wrong) failures.Add("numbers must not use spelling flow");
         }
 
         private static void CheckAdminAuth(List<string> failures)
@@ -3187,6 +3298,13 @@ namespace Guardian
                 if (age == null) failures.Add("birth profile should generate mission");
                 var date = new MissionCatalog().Generate("comprehension.functional_1.current_date", profile, new Dictionary<string, string>(), new Random(1));
                 if (date == null) failures.Add("current date mission missing");
+                var vocabulary = new MissionCatalog().Generate("comprehension.functional_1.instruction_vocabulary", new PrivateMissionProfile(), new Dictionary<string, string>(), new Random(1));
+                if (vocabulary == null || vocabulary.HelpSteps == null || vocabulary.HelpSteps.Count != 3) failures.Add("instruction vocabulary should generate three help levels without profile");
+                var ageVariants = new HashSet<string>();
+                for (var i = 0; i < 80; i++) { var generated = new MissionCatalog().Generate("comprehension.functional_1.age_birth", profile, new Dictionary<string, string>(), new Random(i)); ageVariants.Add(generated.VariantId); if (generated.HelpSteps == null || generated.HelpSteps.Count != 3) failures.Add("comprehension mission missing progressive help"); }
+                if (!ageVariants.Contains("birth_date_ask") || !ageVariants.Contains("birthday_ask")) failures.Add("birth date and birthday variants must remain distinct");
+                var telemetry = MissionTelemetry.Payload(vocabulary, 2, 2, 2, true, 1, false);
+                if (!telemetry.ContainsKey("skill_level_id") || !telemetry.ContainsKey("max_help_level") || telemetry.ContainsKey("input") || telemetry.ContainsKey("accepted_answer")) failures.Add("mission telemetry help fields or privacy boundary failed");
             }
             finally { GuardianClock.LocalNowProvider = originalClock; }
         }

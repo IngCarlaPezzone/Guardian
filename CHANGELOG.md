@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3-staging-comprehension-help
+
+- En preparación para validación STG: incorpora ayudas progresivas determinísticas, rutina de reintento, corrección ortográfica local conservadora y Vocabulario de consignas.
+- Agrega Fecha de nacimiento como variante distinta de Cumpleaños y telemetría de ayuda/escritura sin contenido de respuestas o perfiles privados.
+
 ## 0.4.2
 
 - Corrige la persistencia de versión tras reiniciar Windows: cliente, updater, instaladores, watchdog y autoarranque usan una única ubicación canónica.

@@ -30,6 +30,8 @@ Guardian escribe eventos locales en JSON Lines y, desde Etapa 1, sincroniza una 
 - `UsageCounterStarted`
 - `UsageCounterPaused`
 - `MissionStarted`
+- `MissionHelpRequested`
+- `MissionWritingHintShown`
 - `MissionFailed`
 - `MissionSolved`
 - `DeviceLocked`
@@ -75,6 +77,8 @@ El servidor deduplica por `event_id`. El cliente elimina de pendientes solo los 
 Desde `0.3.1`, el acceso local a `events-pending.jsonl` usa locking interproceso y los errores de telemetria no deben cerrar Guardian.
 
 Desde `0.4.0`, los eventos de misión nuevos incluyen `mission_id`, `category_id`, `level_id`, `skill_id`, `variant_id` y `attempt`. Las respuestas ingresadas y los valores del perfil privado no se registran en `events.jsonl`, `events-pending.jsonl` ni se envían al servidor.
+
+Desde `0.4.3-staging-comprehension-help`, los eventos de misión incluyen además `skill_level_id` (nivel pedagógico), `max_help_level`, `help_requests_count`, `had_orthographic_error`, `writing_correction_count` y `writing_answer_revealed`. `MissionHelpRequested` añade `help_level`; `MissionWritingHintShown` añade `writing_hint_stage`. Estos payloads nunca incluyen el input, la respuesta aceptada, texto de ayuda, prefijos ni datos del perfil privado.
 
 ## Configuracion Remota
 

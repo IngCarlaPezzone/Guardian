@@ -14,6 +14,15 @@ namespace Guardian
         public string SkillId { get; set; }
         public string VariantId { get; set; }
         public List<string> AcceptedAnswers { get; set; }
+        public List<string> PromptBoldTerms { get; set; }
+        public List<MissionHelpStep> HelpSteps { get; set; }
+    }
+
+    public sealed class MissionHelpStep
+    {
+        public int HelpLevel { get; set; }
+        public string Text { get; set; }
+        public List<string> BoldTerms { get; set; }
     }
 
     public sealed class PrivateMissionProfile
@@ -65,10 +74,12 @@ namespace Guardian
 
     public static class MissionTelemetry
     {
-        public static Dictionary<string, object> Payload(Mission m, int attempt)
+        public static Dictionary<string, object> Payload(Mission m, int attempt, int maxHelpLevel, int helpRequestsCount, bool hadOrthographicError, int writingCorrectionCount, bool writingAnswerRevealed)
         {
-            return new Dictionary<string, object> { { "mission_id", m.Id }, { "missionId", m.Id }, { "category_id", m.CategoryId }, { "level_id", m.LevelId }, { "skill_id", m.SkillId }, { "variant_id", m.VariantId }, { "attempt", attempt } };
+            return new Dictionary<string, object> { { "mission_id", m.Id }, { "missionId", m.Id }, { "category_id", m.CategoryId }, { "level_id", m.LevelId }, { "skill_level_id", m.LevelId }, { "skill_id", m.SkillId }, { "variant_id", m.VariantId }, { "attempt", attempt }, { "max_help_level", maxHelpLevel }, { "help_requests_count", helpRequestsCount }, { "had_orthographic_error", hadOrthographicError }, { "writing_correction_count", writingCorrectionCount }, { "writing_answer_revealed", writingAnswerRevealed } };
         }
+
+        public static Dictionary<string, object> Payload(Mission m, int attempt) { return Payload(m, attempt, 0, 0, false, 0, false); }
     }
 
     public sealed class MissionUnavailableDeduplicator
@@ -128,7 +139,7 @@ namespace Guardian
         {
             if (key == "comprehension.functional_1.identity") return p != null && (!string.IsNullOrWhiteSpace(p.PreferredName) || !string.IsNullOrWhiteSpace(p.FirstName) || !string.IsNullOrWhiteSpace(p.LastName));
             if (key == "comprehension.functional_1.age_birth") return p != null && ParseDate(p.BirthDate).HasValue;
-            return key == "math.basic_operations_1.addition" || key == "math.basic_operations_1.subtraction" || key == "math.basic_operations_1.multiplication" || key == "comprehension.functional_1.current_date" || key == "comprehension.functional_1.temporal_relations" || key == "comprehension.functional_1.calendar" || key == "comprehension.functional_1.seasons";
+            return key == "math.basic_operations_1.addition" || key == "math.basic_operations_1.subtraction" || key == "math.basic_operations_1.multiplication" || key == "comprehension.functional_1.current_date" || key == "comprehension.functional_1.temporal_relations" || key == "comprehension.functional_1.calendar" || key == "comprehension.functional_1.seasons" || key == "comprehension.functional_1.instruction_vocabulary";
         }
         public Mission Generate(string key, PrivateMissionProfile p, Dictionary<string, string> last, Random r)
         {
@@ -139,9 +150,15 @@ namespace Guardian
             if (key.EndsWith(".current_date")) return CurrentDate(last, r);
             if (key.EndsWith(".temporal_relations")) return Temporal(last, r);
             if (key.EndsWith(".calendar")) return Calendar(last, r);
+            if (key.EndsWith(".instruction_vocabulary")) return InstructionVocabulary(last, r);
             return Season(last, r);
         }
-        private static Mission M(string cat, string level, string skill, string variant, string prompt, params string[] answers) { return new Mission { Id = Guid.NewGuid().ToString(), CategoryId = cat, LevelId = level, SkillId = skill, VariantId = variant, Prompt = prompt, AcceptedAnswers = new List<string>(answers) }; }
+        private static Mission M(string cat, string level, string skill, string variant, string prompt, params string[] answers)
+        {
+            var mission = new Mission { Id = Guid.NewGuid().ToString(), CategoryId = cat, LevelId = level, SkillId = skill, VariantId = variant, Prompt = prompt, AcceptedAnswers = new List<string>(answers), PromptBoldTerms = PromptTerms(prompt), HelpSteps = new List<MissionHelpStep>() };
+            if (cat == "comprehension") mission.HelpSteps = HelpSteps(mission);
+            return mission;
+        }
         private Mission MathMission(string key, Random r)
         {
             var skill = key.Substring(key.LastIndexOf('.') + 1); int a, b, answer; string symbol;
@@ -158,17 +175,37 @@ namespace Guardian
         private Mission AgeBirth(PrivateMissionProfile p, Dictionary<string, string> last, Random r)
         {
             var birth = ParseDate(p.BirthDate).Value; var today = GuardianClock.TodayLocal; var age = today.Year - birth.Year; if (birth > today.AddYears(-age)) age--;
-            return Choose(new List<Mission> { M("comprehension","functional_1","age_birth","age_ask_1","¿Cuántos años tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_ask_2","¿Qué edad tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_field","Edad:", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","birth_year_ask","¿En qué año naciste?",birth.Year.ToString()), M("comprehension","functional_1","age_birth","birth_year_field","Año de nacimiento:",birth.Year.ToString()), M("comprehension","functional_1","age_birth","birthday_ask","¿Cuándo es tu cumpleaños?", DateAnswers(birth, false).ToArray()) }, last, "comprehension.functional_1.age_birth", r);
+            return Choose(new List<Mission> { M("comprehension","functional_1","age_birth","age_ask_1","¿Cuántos años tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_ask_2","¿Qué edad tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_field","Edad:", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","birth_year_ask","¿En qué año naciste?",birth.Year.ToString()), M("comprehension","functional_1","age_birth","birth_year_field","Año de nacimiento:",birth.Year.ToString()), M("comprehension","functional_1","age_birth","birthday_ask","¿Cuándo es tu cumpleaños?", DateAnswers(birth, false).ToArray()), M("comprehension","functional_1","age_birth","birth_date_ask","¿Cuál es tu fecha de nacimiento?", DateAnswers(birth, true).ToArray()) }, last, "comprehension.functional_1.age_birth", r);
         }
         private Mission CurrentDate(Dictionary<string, string> last, Random r) { var d = GuardianClock.TodayLocal; return Choose(new List<Mission> { M("comprehension","functional_1","current_date","current_year_ask_1","¿En qué año estamos?",d.Year.ToString()), M("comprehension","functional_1","current_date","current_year_ask_2","¿Qué año es?",d.Year.ToString()), M("comprehension","functional_1","current_date","current_month_ask_1","¿En qué mes estamos?",Months[d.Month-1]), M("comprehension","functional_1","current_date","current_month_ask_2","¿Qué mes es?",Months[d.Month-1]), M("comprehension","functional_1","current_date","current_weekday","¿Qué día de la semana es hoy?",Weekdays[(int)d.DayOfWeek]), M("comprehension","functional_1","current_date","current_day_of_month","¿Qué día del mes es hoy?",d.Day.ToString()), M("comprehension","functional_1","current_date","current_full_date","¿Qué fecha es hoy?",DateAnswers(d,true).ToArray()) },last,"comprehension.functional_1.current_date",r); }
         private Mission Temporal(Dictionary<string, string> last, Random r) { var d = GuardianClock.TodayLocal; return Choose(new List<Mission> { M("comprehension","functional_1","temporal_relations","tomorrow_weekday","¿Qué día de la semana es mañana?",Weekdays[(int)d.AddDays(1).DayOfWeek]), M("comprehension","functional_1","temporal_relations","yesterday_weekday","¿Qué día de la semana fue ayer?",Weekdays[(int)d.AddDays(-1).DayOfWeek]), M("comprehension","functional_1","temporal_relations","next_month_ask_1","¿Cuál es el mes que viene?",Months[d.AddMonths(1).Month-1]), M("comprehension","functional_1","temporal_relations","next_month_ask_2","¿Qué mes viene después de este?",Months[d.AddMonths(1).Month-1]), M("comprehension","functional_1","temporal_relations","previous_month","¿Cuál fue el mes pasado?",Months[d.AddMonths(-1).Month-1]) },last,"comprehension.functional_1.temporal_relations",r); }
         private Mission Calendar(Dictionary<string, string> last, Random r) { var day=r.Next(7); var month=r.Next(12); return Choose(new List<Mission> { M("comprehension","functional_1","calendar","days_in_week","¿Cuántos días tiene una semana?",NumberAnswers(7).ToArray()), M("comprehension","functional_1","calendar","months_in_year","¿Cuántos meses tiene un año?",NumberAnswers(12).ToArray()), M("comprehension","functional_1","calendar","weekday_after","¿Qué día viene después del "+Weekdays[day]+"?",Weekdays[(day+1)%7]), M("comprehension","functional_1","calendar","weekday_before","¿Qué día viene antes del "+Weekdays[day]+"?",Weekdays[(day+6)%7]), M("comprehension","functional_1","calendar","month_after","¿Qué mes viene después de "+Months[month]+"?",Months[(month+1)%12]), M("comprehension","functional_1","calendar","month_before","¿Qué mes viene antes de "+Months[month]+"?",Months[(month+11)%12]) },last,"comprehension.functional_1.calendar",r); }
         private Mission Season(Dictionary<string, string> last, Random r) { var s=r.Next(4); return Choose(new List<Mission> { M("comprehension","functional_1","seasons","season_cold","¿Cuál es la estación del año en la que hace mucho frío?","invierno"), M("comprehension","functional_1","seasons","season_hot","¿Cuál es la estación del año en la que hace mucho calor?","verano"), M("comprehension","functional_1","seasons","season_falling_leaves","¿En qué estación se caen muchas hojas de los árboles?","otoño"), M("comprehension","functional_1","seasons","season_flowers","¿En qué estación suelen crecer muchas flores?","primavera"), M("comprehension","functional_1","seasons","season_after","¿Qué estación viene después del "+Seasons[s]+"?",Seasons[(s+1)%4]) },last,"comprehension.functional_1.seasons",r); }
+        private Mission InstructionVocabulary(Dictionary<string, string> last, Random r) { return Choose(new List<Mission> { M("comprehension","functional_1","instruction_vocabulary","vocab_how_many","⭐⭐⭐⭐ ¿Cuántas estrellas hay?",NumberAnswers(4).ToArray()), M("comprehension","functional_1","instruction_vocabulary","vocab_quantity","Hay 3 lápices. ¿Cuál es la cantidad de lápices?",NumberAnswers(3).ToArray()), M("comprehension","functional_1","instruction_vocabulary","vocab_before","Lunes, martes, miércoles. ¿Qué día está antes de miércoles?","martes"), M("comprehension","functional_1","instruction_vocabulary","vocab_after","Enero, febrero, marzo. ¿Qué mes está después de febrero?","marzo"), M("comprehension","functional_1","instruction_vocabulary","vocab_next","Uno, dos, tres... ¿qué número es el siguiente?",NumberAnswers(4).ToArray()), M("comprehension","functional_1","instruction_vocabulary","vocab_previous","Uno, dos, tres... ¿qué número es el anterior a tres?",NumberAnswers(2).ToArray()), M("comprehension","functional_1","instruction_vocabulary","vocab_first","Rojo, azul, verde. ¿Cuál está primero?","rojo"), M("comprehension","functional_1","instruction_vocabulary","vocab_last","Rojo, azul, verde. ¿Cuál está último?","verde") },last,"comprehension.functional_1.instruction_vocabulary",r); }
         private static Mission Choose(List<Mission> list, Dictionary<string,string> last, string skill, Random r) { list.RemoveAll(delegate(Mission x){return x.AcceptedAnswers.Count==0;}); var prior=last!=null&&last.ContainsKey(skill)?last[skill]:""; var choices=list.FindAll(delegate(Mission x){return list.Count==1||x.VariantId!=prior;}); return choices[r.Next(choices.Count)]; }
         private static List<string> NonEmpty(params string[] values) { var result=new List<string>(); foreach(var x in values) if(!string.IsNullOrWhiteSpace(x)) result.Add(x); return result; }
         private static string Join(params string[] values) { return string.Join(" ", NonEmpty(values).ToArray()); }
         private static DateTime? ParseDate(string text) { DateTime date; return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out date) ? date.Date : (DateTime?)null; }
         private static List<string> NumberAnswers(int n) { var a=new List<string>{n.ToString()}; if(n==7)a.Add("siete"); if(n==12)a.Add("doce"); return a; }
         private static List<string> DateAnswers(DateTime d, bool year) { var a=new List<string>{d.ToString(year?"dd/MM/yyyy":"dd/MM"),d.Day+" de "+Months[d.Month-1]+(year?" de "+d.Year:"")}; if(year)a.Add(d.Day+" "+Months[d.Month-1]+" "+d.Year); return a; }
+        private static List<string> PromptTerms(string prompt) { var terms = new List<string>(); foreach (var term in new [] { "Cuántos", "Cuántas", "Cuál", "Qué", "Cuándo", "día de la semana", "día del mes", "mes", "año", "estación", "apellido", "edad", "fecha de nacimiento", "cantidad", "antes", "después", "siguiente", "anterior", "primero", "último" }) if (prompt.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) terms.Add(term); return terms; }
+        private static List<MissionHelpStep> HelpSteps(Mission m)
+        {
+            string first = "Leé otra vez la pregunta: te está pidiendo el dato indicado.";
+            string second = "Pensá qué palabra de la pregunta te dice qué tenés que responder.";
+            string third = "Mirá la pregunta paso por paso y escribí solamente la respuesta que pide.";
+            if (m.VariantId == "birth_date_ask") { first="¿Qué fecha dice el día, el mes y el año en que naciste?"; second="Fecha de nacimiento dice día, mes y año de nacimiento. Escribí los tres datos."; third="La respuesta tiene tres partes: día + mes + año en que naciste."; }
+            else if (m.VariantId == "birthday_ask") { first="¿Qué día y qué mes es tu cumpleaños?"; second="Te estoy preguntando el día y el mes de tu cumpleaños."; third="Pensá primero en el mes y después en qué día de ese mes es tu cumpleaños."; }
+            else if (m.VariantId == "season_falling_leaves") { first="¿En qué época del año suelen caerse las hojas de los árboles?"; second="Hay una estación en la que muchas hojas cambian de color y después caen."; third="Esa estación está entre verano e invierno."; }
+            else if (m.VariantId == "vocab_how_many") { first="¿Qué cantidad de estrellas ves?"; second="Cuántas pregunta por una cantidad. Contalas."; third="Señalá una por una mientras contás y escribí el número final."; }
+            else if (m.VariantId == "vocab_quantity") { first="¿Cuántos lápices hay?"; second="Cantidad quiere decir cuántos hay."; third="Contá los lápices y escribí el número."; }
+            else if (m.VariantId == "vocab_before") { first="¿Qué día viene justo antes de miércoles?"; second="Mirá el orden: lunes → martes → miércoles."; third="Completá: lunes → ___ → miércoles."; }
+            else if (m.VariantId == "vocab_after") { first="¿Qué mes viene justo después de febrero?"; second="Mirá el orden: enero → febrero → marzo."; third="Completá: enero → febrero → ___."; }
+            else if (m.VariantId == "vocab_next") { first="¿Qué número viene después de tres?"; second="Siguiente quiere decir el que viene justo después."; third="Completá: 1, 2, 3, ___."; }
+            else if (m.VariantId == "vocab_previous") { first="¿Qué número viene justo antes de tres?"; second="Anterior quiere decir el que estaba antes."; third="Completá: 1, ___, 3."; }
+            else if (m.VariantId == "vocab_first") { first="¿Cuál aparece antes que los demás?"; second="Primero es el que está al comienzo."; third="Mirá el orden: rojo → azul → verde."; }
+            else if (m.VariantId == "vocab_last") { first="¿Cuál aparece al final?"; second="Último es el que está después de todos."; third="Mirá el orden: rojo → azul → verde."; }
+            return new List<MissionHelpStep> { new MissionHelpStep { HelpLevel=1, Text=first, BoldTerms=PromptTerms(first) }, new MissionHelpStep { HelpLevel=2, Text=second, BoldTerms=PromptTerms(second) }, new MissionHelpStep { HelpLevel=3, Text=third, BoldTerms=PromptTerms(third) } };
+        }
     }
 }
