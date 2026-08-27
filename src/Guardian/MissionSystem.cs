@@ -155,8 +155,8 @@ namespace Guardian
         }
         private static Mission M(string cat, string level, string skill, string variant, string prompt, params string[] answers)
         {
-            var mission = new Mission { Id = Guid.NewGuid().ToString(), CategoryId = cat, LevelId = level, SkillId = skill, VariantId = variant, Prompt = prompt, AcceptedAnswers = new List<string>(answers), PromptBoldTerms = PromptTerms(prompt), HelpSteps = new List<MissionHelpStep>() };
-            if (cat == "comprehension") mission.HelpSteps = HelpSteps(mission);
+            var mission = new Mission { Id = Guid.NewGuid().ToString(), CategoryId = cat, LevelId = level, SkillId = skill, VariantId = variant, Prompt = prompt, AcceptedAnswers = new List<string>(answers), PromptBoldTerms = MissionContent.PromptTerms(prompt), HelpSteps = new List<MissionHelpStep>() };
+            if (cat == "comprehension") mission.HelpSteps = MissionContent.HelpSteps(mission);
             return mission;
         }
         private Mission MathMission(string key, Random r)

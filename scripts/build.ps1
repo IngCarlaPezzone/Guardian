@@ -5,6 +5,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $root "src\Guardian\Guardian.cs"
 $missionSrc = Join-Path $root "src\Guardian\MissionSystem.cs"
+$missionContentSrc = Join-Path $root "src\Guardian\MissionContent.cs"
 $installPathsSrc = Join-Path $root "src\Guardian\GuardianInstallPaths.cs"
 $updaterSrc = Join-Path $root "updater\src\GuardianUpdater.cs"
 $outDir = Join-Path $root "dist"
@@ -49,6 +50,7 @@ Set-Content -Encoding UTF8 -Path $updaterVersionSrc -Value "namespace GuardianUp
   /reference:System.Web.Extensions.dll `
   $src `
   $missionSrc `
+  $missionContentSrc `
   $installPathsSrc `
   $guardianVersionSrc
 

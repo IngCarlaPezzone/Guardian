@@ -2313,9 +2313,8 @@ namespace Guardian
                 _writingCorrectionCount++;
                 var stage = _writingCorrectionCount >= 3 ? 3 : _writingCorrectionCount;
                 _feedbackIcon.Visibility = Visibility.Visible;
-                if (stage == 1) _feedback.Text = "Parece que sabés la respuesta. Revisá cómo la escribiste.";
-                else if (stage == 2) _feedback.Text = "Empieza con " + PrefixHint(analysis.MatchedAcceptedAnswer) + "...";
-                else { _writingAnswerRevealed = true; _feedback.Text = "Se escribe " + analysis.MatchedAcceptedAnswer + ". Ahora escribilo vos correctamente."; }
+                if (stage < 3) _feedback.Text = MissionContent.WritingFeedback(MissionValidator.DescribeDifference(_answerBox.Text, analysis.MatchedAcceptedAnswer));
+                else { _writingAnswerRevealed = true; _feedback.Text = MissionContent.WritingAnswerRevealed(analysis.MatchedAcceptedAnswer); }
                 _answerBox.SelectAll();
                 var spellingPayload = TelemetryPayload(); spellingPayload["reason"] = "orthographic_error";
                 _logger.Log("MissionFailed", spellingPayload);
@@ -2363,7 +2362,7 @@ namespace Guardian
             var text = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(7, 4, 0, 4), MaxWidth = 560 };
             RenderRichText(text, step.Text, step.BoldTerms);
             var helpRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
-            helpRow.Children.Add(CreateIcon(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", 25));
+            helpRow.Children.Add(CreateIcon(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", 28));
             helpRow.Children.Add(text);
             _helpPanel.Children.Add(helpRow);
             _maxHelpLevelUsed = next; _helpRequestsCount++; if (next == 2) _helpLevel2Shown = true;
@@ -2377,14 +2376,14 @@ namespace Guardian
             if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || _maxHelpLevelUsed >= 3) { _helpButton.Visibility = Visibility.Collapsed; return; }
             var next = _maxHelpLevelUsed + 1;
             if (next == 3 && !_helpLevel3Unlocked) { _helpButton.Visibility = Visibility.Collapsed; return; }
-            _helpButton.Content = CreateIconButtonContent(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", next == 1 ? "Decilo de otra manera" : next == 2 ? "Dame una pista" : "Guiame un poco más");
+            _helpButton.Content = CreateIconButtonContent(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", next == 1 ? MissionContent.RephraseButton : next == 2 ? MissionContent.HintButton : MissionContent.GuidedButton);
             _helpButton.Visibility = Visibility.Visible;
         }
 
         private static StackPanel CreateIconButtonContent(string iconName, string label)
         {
             var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            var image = CreateIcon(iconName, 24); image.Margin = new Thickness(0, 0, 7, 0); panel.Children.Add(image);
+            var image = CreateIcon(iconName, 28); image.Margin = new Thickness(0, 0, 8, 0); panel.Children.Add(image);
             panel.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
             return panel;
         }
@@ -2392,7 +2391,6 @@ namespace Guardian
         private static StackPanel CreateRoutinePanel()
         {
             var panel = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 10) };
-            panel.Children.Add(new TextBlock { Text = "Probemos otra vez.", Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), FontSize = 17, TextAlignment = TextAlignment.Center });
             var steps = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
             AddRoutineStep(steps, "look.png", "MIRO"); AddRoutineStep(steps, "think.png", "PIENSO"); AddRoutineStep(steps, "write.png", "RESPONDO"); panel.Children.Add(steps);
             return panel;
@@ -2401,7 +2399,7 @@ namespace Guardian
         private static void AddRoutineStep(StackPanel panel, string iconName, string label)
         {
             if (panel.Children.Count > 0) panel.Children.Add(new TextBlock { Text = "  →  ", VerticalAlignment = VerticalAlignment.Center, Foreground = new SolidColorBrush(Color.FromRgb(75, 85, 99)) });
-            panel.Children.Add(CreateIcon(iconName, 23)); panel.Children.Add(new TextBlock { Text = " " + label, VerticalAlignment = VerticalAlignment.Center, Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), FontSize = 16 });
+            panel.Children.Add(CreateIcon(iconName, 32)); panel.Children.Add(new TextBlock { Text = " " + label, VerticalAlignment = VerticalAlignment.Center, Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), FontSize = 16 });
         }
 
         private static Image CreateIcon(string iconName, double size)
@@ -2494,6 +2492,8 @@ namespace Guardian
         Correct
     }
 
+    public enum WritingDifference { Unknown, ExtraLetter, MissingLetter, TransposedLetters, SubstitutedLetter }
+
     public sealed class MissionAnswerAnalysis { public MissionAnswerResult Result { get; set; } public string MatchedAcceptedAnswer { get; set; } public int EditDistance { get; set; } }
 
     public static class MissionValidator
@@ -2522,6 +2522,29 @@ namespace Guardian
             }
             if (accepted != null && !ambiguous) { analysis.Result=MissionAnswerResult.OrthographicNearMatch; analysis.MatchedAcceptedAnswer=accepted; analysis.EditDistance=best; return analysis; }
             analysis.Result = MissionAnswerResult.Wrong; return analysis;
+        }
+
+        public static WritingDifference DescribeDifference(string input, string expected)
+        {
+            var actual = MissionText.Normalize(input); var target = MissionText.Normalize(expected);
+            if (actual.Length == target.Length + 1 && IsSingleInsertion(target, actual)) return WritingDifference.ExtraLetter;
+            if (target.Length == actual.Length + 1 && IsSingleInsertion(actual, target)) return WritingDifference.MissingLetter;
+            if (actual.Length == target.Length)
+            {
+                var first = -1; var second = -1;
+                for (var i = 0; i < actual.Length; i++) if (actual[i] != target[i]) { if (first < 0) first = i; else if (second < 0) second = i; else return WritingDifference.Unknown; }
+                if (first >= 0 && second == first + 1 && actual[first] == target[second] && actual[second] == target[first]) return WritingDifference.TransposedLetters;
+                if (first >= 0 && second < 0) return WritingDifference.SubstitutedLetter;
+            }
+            return WritingDifference.Unknown;
+        }
+
+        private static bool IsSingleInsertion(string shorter, string longer)
+        {
+            var left = 0; while (left < shorter.Length && shorter[left] == longer[left]) left++;
+            var shortIndex = left; var longIndex = left + 1;
+            while (shortIndex < shorter.Length && shorter[shortIndex] == longer[longIndex]) { shortIndex++; longIndex++; }
+            return shortIndex == shorter.Length;
         }
 
         private static bool IsText(string text) { foreach (var c in text) if (!char.IsLetter(c) && c != ' ') return false; return text.Length > 0; }
@@ -3273,6 +3296,12 @@ namespace Guardian
             if (MissionValidator.Validate("Bauti", surname) != MissionAnswerResult.Wrong) failures.Add("distant text must be wrong");
             if (MissionValidator.Validate("verano", season) != MissionAnswerResult.Wrong) failures.Add("semantic season mismatch must be wrong");
             if (MissionValidator.Validate("8", number) != MissionAnswerResult.Wrong) failures.Add("numbers must not use spelling flow");
+            if (MissionValidator.DescribeDifference("veranno", "verano") != WritingDifference.ExtraLetter) failures.Add("extra letter diagnosis failed");
+            if (MissionValidator.DescribeDifference("otño", "otoño") != WritingDifference.MissingLetter) failures.Add("missing letter diagnosis failed");
+            if (MissionValidator.DescribeDifference("vernao", "verano") != WritingDifference.TransposedLetters) failures.Add("transposition diagnosis failed");
+            if (MissionValidator.DescribeDifference("vereno", "verano") != WritingDifference.SubstitutedLetter) failures.Add("substitution diagnosis failed");
+            if (MissionValidator.DescribeDifference("Bauti", "Pereira") != WritingDifference.Unknown) failures.Add("ambiguous diagnosis must stay unknown");
+            if (MissionContent.WritingAnswerRevealed("verano").IndexOf("verano", StringComparison.Ordinal) < 0) failures.Add("revealed writing feedback missing answer");
         }
 
         private static void CheckAdminAuth(List<string> failures)
