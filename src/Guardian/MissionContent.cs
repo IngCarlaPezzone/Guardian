@@ -21,11 +21,29 @@ namespace Guardian
 
         public static string WritingAnswerRevealed(string answer) { return "Se escribe: " + answer + ". Ahora escribilo vos correctamente."; }
 
+        // Prompts is the runtime source for every comprehension VariantId. Dynamic values are supplied by MissionSystem.
+        private static readonly Dictionary<string, string> Prompts = new Dictionary<string, string> {
+            { "identity_name_ask_1", "¿Cuál es tu nombre?" }, { "identity_name_ask_2", "¿Cómo te llamás?" }, { "identity_name_field", "Nombre:" }, { "identity_last_name_ask", "¿Cuál es tu apellido?" }, { "identity_last_name_field", "Apellido:" }, { "identity_name_last_name_ask", "¿Cuál es tu nombre y apellido?" }, { "identity_name_last_name_field", "Nombre y apellido:" }, { "identity_full_name_ask", "¿Cuál es tu nombre completo?" },
+            { "age_ask_1", "¿Cuántos años tenés?" }, { "age_ask_2", "¿Qué edad tenés?" }, { "age_field", "Edad:" }, { "birth_year_ask", "¿En qué año naciste?" }, { "birth_year_field", "Año de nacimiento:" }, { "birthday_ask", "¿Cuándo es tu cumpleaños?" }, { "birth_date_ask", "¿Cuál es tu fecha de nacimiento?" },
+            { "current_year_ask_1", "¿En qué año estamos?" }, { "current_year_ask_2", "¿Qué año es?" }, { "current_month_ask_1", "¿En qué mes estamos?" }, { "current_month_ask_2", "¿Qué mes es?" }, { "current_weekday", "¿Qué día de la semana es hoy?" }, { "current_day_of_month", "¿Qué día del mes es hoy?" }, { "current_full_date", "¿Qué fecha es hoy?" },
+            { "tomorrow_weekday", "¿Qué día de la semana es mañana?" }, { "yesterday_weekday", "¿Qué día de la semana fue ayer?" }, { "next_month_ask_1", "¿Cuál es el mes que viene?" }, { "next_month_ask_2", "¿Qué mes viene después de este?" }, { "previous_month", "¿Cuál fue el mes pasado?" },
+            { "days_in_week", "¿Cuántos días tiene una semana?" }, { "months_in_year", "¿Cuántos meses tiene un año?" }, { "weekday_after", "¿Qué día viene después del {0}?" }, { "weekday_before", "¿Qué día viene antes del {0}?" }, { "month_after", "¿Qué mes viene después de {0}?" }, { "month_before", "¿Qué mes viene antes de {0}?" },
+            { "season_cold", "¿Cuál es la estación del año en la que hace mucho frío?" }, { "season_hot", "¿Cuál es la estación del año en la que hace mucho calor?" }, { "season_falling_leaves", "¿En qué estación se caen muchas hojas de los árboles?" }, { "season_flowers", "¿En qué estación suelen crecer muchas flores?" }, { "season_after", "¿Qué estación viene después del {0}?" },
+            { "vocab_how_many", "⭐⭐⭐⭐ ¿Cuántas estrellas hay?" }, { "vocab_quantity", "Hay 3 lápices. ¿Cuál es la cantidad de lápices?" }, { "vocab_before", "Lunes, martes, miércoles. ¿Qué día está antes de miércoles?" }, { "vocab_after", "Enero, febrero, marzo. ¿Qué mes está después de febrero?" }, { "vocab_next", "Uno, dos, tres... ¿qué número es el siguiente?" }, { "vocab_previous", "Uno, dos, tres... ¿qué número es el anterior a tres?" }, { "vocab_first", "Rojo, azul, verde. ¿Cuál está primero?" }, { "vocab_last", "Rojo, azul, verde. ¿Cuál está último?" }
+        };
+
+        public static string PromptFor(string variantId, params object[] values)
+        {
+            string template;
+            if (!Prompts.TryGetValue(variantId, out template)) throw new InvalidOperationException("Falta contenido para la variante " + variantId + ".");
+            return values == null || values.Length == 0 ? template : string.Format(template, values);
+        }
+
         public static List<MissionHelpStep> HelpSteps(Mission mission)
         {
-            string one = "Respondé con el dato que pide esta consigna.";
-            string two = "Pensá qué tipo de respuesta corresponde.";
-            string three = "Elegí el dato correcto y escribilo completo.";
+            string one = null;
+            string two = null;
+            string three = null;
             var id = mission.VariantId;
             if (id == "age_ask_1") { one="¿Qué cantidad de años tenés?"; two="Cuántos pregunta por una cantidad. ¿Qué número dice cuántos años tenés?"; three="Pensá en el número que decís cuando te preguntan tu edad."; }
             else if (id == "age_ask_2" || id == "age_field") { one="¿Cuántos años tenés?"; two="Edad quiere decir cuántos años tiene una persona."; three="Respondé con el número de años que tenés ahora."; }
@@ -47,9 +65,11 @@ namespace Guardian
             else if (id == "vocab_last") { one="¿Cuál aparece al final?"; two="Último es el que está después de todos."; three="Mirá el orden: rojo → azul → verde."; }
             else if (id.StartsWith("current_year")) { one="¿Cuál es el año de ahora?"; two="Pensá en la parte del año cuando escribís la fecha de hoy."; three="Escribí el número de cuatro cifras del año actual."; }
             else if (id.StartsWith("current_month")) { one="¿Cuál es el mes de ahora?"; two="Pensá en enero, febrero, marzo… ¿cuál es el mes actual?"; three="Escribí el nombre del mes de ahora."; }
+            else if (id == "current_full_date") { one="Respondé con el dato que pide esta consigna."; two="Pensá qué tipo de respuesta corresponde."; three="Elegí el dato correcto y escribilo completo."; }
             else if (id.Contains("month") || id.Contains("weekday")) { one="Pensá en el orden de los días o meses."; two="Ubicá el dato mostrado dentro de su secuencia."; three="Elegí el que corresponde antes o después."; }
             else if (id == "days_in_week" || id == "months_in_year") { one="¿Qué cantidad forman?"; two="Contalos en orden."; three="Escribí el número final."; }
             else if (mission.SkillId == "identity") { one="Pensá en el dato personal que pide la consigna."; two="Fijate si te pide nombre, apellido o los dos juntos."; three="Escribí completo el dato personal que te pide."; }
+            if (one == null || two == null || three == null) throw new InvalidOperationException("Faltan ayudas para la variante " + id + ".");
             return new List<MissionHelpStep> { Step(1, one), Step(2, two), Step(3, three) };
         }
 
