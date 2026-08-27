@@ -2158,6 +2158,10 @@ namespace Guardian
             _helpPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
             panel.Children.Add(_helpPanel);
             _helpButton = new Button { FontSize = 16, Padding = new Thickness(14, 7, 14, 7), HorizontalAlignment = HorizontalAlignment.Center, Visibility = Visibility.Collapsed };
+            _helpButton.FontFamily = new FontFamily("Segoe UI Emoji");
+            _helpButton.Background = new SolidColorBrush(Color.FromRgb(219, 234, 254));
+            _helpButton.BorderBrush = new SolidColorBrush(Color.FromRgb(37, 99, 235));
+            _helpButton.Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175));
             _helpButton.Click += delegate { RequestNextHelp(); };
             panel.Children.Add(_helpButton);
             UpdateHelpButton();
@@ -2314,7 +2318,7 @@ namespace Guardian
 
             if (result == MissionAnswerResult.Wrong)
             {
-                _feedback.Text = "Todav\u00eda no. Prob\u00e1 de nuevo.";
+                _feedback.Text = "";
                 _routine.Visibility = Visibility.Visible;
                 if (_helpLevel2Shown) _helpLevel3Unlocked = true;
                 UpdateHelpButton();
@@ -2346,7 +2350,7 @@ namespace Guardian
             MissionHelpStep step = null;
             if (_mission.HelpSteps != null) foreach (var candidate in _mission.HelpSteps) if (candidate.HelpLevel == next) { step = candidate; break; }
             if (step == null) return;
-            var text = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
+            var text = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontFamily = new FontFamily("Segoe UI Emoji"), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
             RenderRichText(text, (next == 1 ? "❓ " : next == 2 ? "🧩 " : "🧭 ") + step.Text, step.BoldTerms);
             _helpPanel.Children.Add(text);
             _maxHelpLevelUsed = next; _helpRequestsCount++; if (next == 2) _helpLevel2Shown = true;
