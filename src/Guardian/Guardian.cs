@@ -17,6 +17,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WinForms = System.Windows.Forms;
 using GuardianShared;
@@ -2364,8 +2365,22 @@ namespace Guardian
             if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || _maxHelpLevelUsed >= 3) { _helpButton.Visibility = Visibility.Collapsed; return; }
             var next = _maxHelpLevelUsed + 1;
             if (next == 3 && !_helpLevel3Unlocked) { _helpButton.Visibility = Visibility.Collapsed; return; }
-            _helpButton.Content = next == 1 ? "❓ Decilo de otra manera" : next == 2 ? "🧩 Dame una pista" : "🧭 Guiame un poco más";
+            _helpButton.Content = next == 1 ? "❓ Decilo de otra manera" : next == 2 ? CreateWritingHintButtonContent() : "🧭 Guiame un poco más";
             _helpButton.Visibility = Visibility.Visible;
+        }
+
+        private static object CreateWritingHintButtonContent()
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            var assetPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Assets", "Icons", "help-lightbulb.png");
+            if (File.Exists(assetPath))
+            {
+                var image = new Image { Width = 26, Height = 26, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 7, 0) };
+                var source = new BitmapImage(); source.BeginInit(); source.UriSource = new Uri(assetPath, UriKind.Absolute); source.CacheOption = BitmapCacheOption.OnLoad; source.EndInit(); image.Source = source;
+                panel.Children.Add(image);
+            }
+            panel.Children.Add(new TextBlock { Text = "Dame una pista", VerticalAlignment = VerticalAlignment.Center });
+            return panel;
         }
 
         private static string PrefixHint(string value) { if (string.IsNullOrWhiteSpace(value)) return "la palabra"; var count = value.Length >= 4 ? 3 : 1; return value.Substring(0, count); }
