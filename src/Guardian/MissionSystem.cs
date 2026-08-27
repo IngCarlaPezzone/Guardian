@@ -14,7 +14,6 @@ namespace Guardian
         public string SkillId { get; set; }
         public string VariantId { get; set; }
         public List<string> AcceptedAnswers { get; set; }
-        public List<string> PromptBoldTerms { get; set; }
         public List<MissionHelpStep> HelpSteps { get; set; }
     }
 
@@ -22,7 +21,6 @@ namespace Guardian
     {
         public int HelpLevel { get; set; }
         public string Text { get; set; }
-        public List<string> BoldTerms { get; set; }
     }
 
     public sealed class PrivateMissionProfile
@@ -155,7 +153,7 @@ namespace Guardian
         }
         private static Mission M(string cat, string level, string skill, string variant, string prompt, params string[] answers)
         {
-            var mission = new Mission { Id = Guid.NewGuid().ToString(), CategoryId = cat, LevelId = level, SkillId = skill, VariantId = variant, Prompt = prompt, AcceptedAnswers = new List<string>(answers), PromptBoldTerms = MissionContent.PromptTerms(prompt), HelpSteps = new List<MissionHelpStep>() };
+            var mission = new Mission { Id = Guid.NewGuid().ToString(), CategoryId = cat, LevelId = level, SkillId = skill, VariantId = variant, Prompt = prompt, AcceptedAnswers = new List<string>(answers), HelpSteps = new List<MissionHelpStep>() };
             if (cat == "comprehension") mission.HelpSteps = MissionContent.HelpSteps(mission);
             return mission;
         }
@@ -188,46 +186,5 @@ namespace Guardian
         private static DateTime? ParseDate(string text) { DateTime date; return DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out date) ? date.Date : (DateTime?)null; }
         private static List<string> NumberAnswers(int n) { var a=new List<string>{n.ToString()}; if(n==7)a.Add("siete"); if(n==12)a.Add("doce"); return a; }
         private static List<string> DateAnswers(DateTime d, bool year) { var a=new List<string>{d.ToString(year?"dd/MM/yyyy":"dd/MM"),d.Day+" de "+Months[d.Month-1]+(year?" de "+d.Year:"")}; if(year)a.Add(d.Day+" "+Months[d.Month-1]+" "+d.Year); return a; }
-        private static List<string> PromptTerms(string prompt) { var terms = new List<string>(); foreach (var term in new [] { "Cuántos", "Cuántas", "Cuál", "Qué", "Cuándo", "día de la semana", "día del mes", "mes", "año", "estación", "apellido", "edad", "fecha de nacimiento", "cantidad", "antes", "después", "siguiente", "anterior", "primero", "último" }) if (prompt.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) terms.Add(term); return terms; }
-        private static List<MissionHelpStep> HelpSteps(Mission m)
-        {
-            string first = "";
-            string second = "";
-            string third = "";
-            if (m.VariantId == "age_ask_1") { first="¿Qué cantidad de años tenés?"; second="Cuántos pregunta por una cantidad. ¿Qué número dice cuántos años tenés?"; third="Pensá en el número que decís cuando te preguntan tu edad."; }
-            else if (m.VariantId == "age_ask_2" || m.VariantId == "age_field") { first="¿Cuántos años tenés?"; second="Edad quiere decir cuántos años tiene una persona."; third="Respondé con el número de años que tenés ahora."; }
-            else if (m.VariantId == "birth_year_ask" || m.VariantId == "birth_year_field") { first="¿Cuál es el año en el que naciste?"; second="Pensá en la parte del año cuando escribís una fecha."; third="Escribí el año completo en que naciste."; }
-            else if (m.VariantId == "birth_date_ask") { first="¿Qué fecha dice el día, el mes y el año en que naciste?"; second="Fecha de nacimiento dice día, mes y año de nacimiento. Escribí los tres datos."; third="La respuesta tiene tres partes: día + mes + año en que naciste."; }
-            else if (m.VariantId == "birthday_ask") { first="¿Qué día y qué mes es tu cumpleaños?"; second="Te estoy preguntando el día y el mes de tu cumpleaños."; third="Pensá primero en el mes y después en qué día de ese mes es tu cumpleaños."; }
-            else if (m.VariantId == "season_falling_leaves") { first="¿En qué época del año suelen caerse las hojas de los árboles?"; second="Hay una estación en la que muchas hojas cambian de color y después caen."; third="Esa estación está entre verano e invierno."; }
-            else if (m.VariantId == "vocab_how_many") { first="¿Qué cantidad de estrellas ves?"; second="Cuántas pregunta por una cantidad. Contalas."; third="Señalá una por una mientras contás y escribí el número final."; }
-            else if (m.VariantId == "vocab_quantity") { first="¿Cuántos lápices hay?"; second="Cantidad quiere decir cuántos hay."; third="Contá los lápices y escribí el número."; }
-            else if (m.VariantId == "vocab_before") { first="¿Qué día viene justo antes de miércoles?"; second="Mirá el orden: lunes → martes → miércoles."; third="Completá: lunes → ___ → miércoles."; }
-            else if (m.VariantId == "vocab_after") { first="¿Qué mes viene justo después de febrero?"; second="Mirá el orden: enero → febrero → marzo."; third="Completá: enero → febrero → ___."; }
-            else if (m.VariantId == "vocab_next") { first="¿Qué número viene después de tres?"; second="Siguiente quiere decir el que viene justo después."; third="Completá: 1, 2, 3, ___."; }
-            else if (m.VariantId == "vocab_previous") { first="¿Qué número viene justo antes de tres?"; second="Anterior quiere decir el que estaba antes."; third="Completá: 1, ___, 3."; }
-            else if (m.VariantId == "vocab_first") { first="¿Cuál aparece antes que los demás?"; second="Primero es el que está al comienzo."; third="Mirá el orden: rojo → azul → verde."; }
-            else if (m.VariantId == "vocab_last") { first="¿Cuál aparece al final?"; second="Último es el que está después de todos."; third="Mirá el orden: rojo → azul → verde."; }
-            else if (m.VariantId.StartsWith("current_year")) { first="¿Cuál es el año de ahora?"; second="Pensá en la parte del año cuando escribís la fecha de hoy."; third="Escribí el número de cuatro cifras del año actual."; }
-            else if (m.VariantId.StartsWith("current_month")) { first="¿Cuál es el mes de ahora?"; second="Pensá en enero, febrero, marzo… ¿cuál es el mes actual?"; third="Escribí el nombre del mes de ahora."; }
-            else if (m.VariantId == "current_weekday") { first="Te preguntan el nombre del día de la semana de hoy."; second="Ayer fue el día anterior; pensá cuál corresponde hoy."; third="Los días son lunes, martes, miércoles, jueves, viernes, sábado y domingo."; }
-            else if (m.VariantId == "current_day_of_month") { first="¿Qué número de día es hoy dentro de este mes?"; second="Pensá en el número de día de hoy."; third="Mirá la fecha: escribí solamente el número del día del mes."; }
-            else if (m.VariantId == "current_full_date") { first="¿Cuál es la fecha completa de hoy: día, mes y año?"; second="Necesitás tres partes: día, mes y año."; third="Escribí en este orden: día + mes + año de hoy."; }
-            else if (m.VariantId.Contains("tomorrow")) { first="¿Qué día viene mañana?"; second="Pensá los días en orden y buscá el que sigue a hoy."; third="Decí los días de la semana alrededor de hoy y elegí el siguiente."; }
-            else if (m.VariantId.Contains("yesterday")) { first="¿Qué día fue el de antes de hoy?"; second="Pensá los días en orden y buscá el que está antes de hoy."; third="Decí los días de la semana alrededor de hoy y elegí el anterior."; }
-            else if (m.VariantId.Contains("next_month") || m.VariantId == "month_after") { first="¿Qué mes viene después?"; second="Después quiere decir el que sigue en la lista de meses."; third="Pensá en el mes mostrado y completá cuál sigue."; }
-            else if (m.VariantId == "previous_month" || m.VariantId == "month_before") { first="¿Qué mes fue o viene justo antes?"; second="Antes quiere decir el que aparece primero en la secuencia."; third="Pensá en el mes mostrado y completá cuál va antes."; }
-            else if (m.VariantId == "days_in_week") { first="¿Qué cantidad de días forman una semana?"; second="Cuántos pregunta por una cantidad: contá de lunes a domingo."; third="Contalos uno por uno y escribí el número final."; }
-            else if (m.VariantId == "months_in_year") { first="¿Qué cantidad de meses forman un año?"; second="Pensá desde enero hasta diciembre."; third="Contá todos los meses del año y escribí la cantidad."; }
-            else if (m.VariantId == "weekday_after") { first="¿Qué día viene justo después del día mostrado?"; second="Después quiere decir el que sigue."; third="Pensá el día anterior, el mostrado y el siguiente."; }
-            else if (m.VariantId == "weekday_before") { first="¿Qué día va justo antes del día mostrado?"; second="Antes quiere decir el que aparece primero."; third="Pensá el día anterior, el mostrado y el siguiente."; }
-            else if (m.VariantId == "season_cold") { first="¿Cómo se llama la época del año en la que hace más frío?"; second="Pensá en la estación en la que usamos más abrigo."; third="No es verano: elegí la estación asociada al frío."; }
-            else if (m.VariantId == "season_hot") { first="¿Cómo se llama la época del año en la que hace más calor?"; second="Pensá en la estación de ropa liviana y días calurosos."; third="Elegí la estación asociada al calor."; }
-            else if (m.VariantId == "season_flowers") { first="¿En qué época del año aparecen muchas flores?"; second="Pensá en la estación que viene después del invierno."; third="Está entre invierno y verano."; }
-            else if (m.VariantId == "season_after") { first="¿Qué estación viene justo después de la mostrada?"; second="Pensá la secuencia: verano, otoño, invierno, primavera."; third="Ubicá la estación mostrada y elegí cuál sigue."; }
-            else if (m.SkillId == "identity") { first="Pensá en el dato personal que pide la consigna."; second="Fijate si te pide nombre, apellido o los dos juntos."; third="Escribí completo el dato personal que te pide."; }
-            else { first="Respondé con el dato que pide esta consigna."; second="Pensá qué tipo de respuesta corresponde: número, día, mes o palabra."; third="Elegí el dato correcto y escribilo completo."; }
-            return new List<MissionHelpStep> { new MissionHelpStep { HelpLevel=1, Text=first, BoldTerms=PromptTerms(first) }, new MissionHelpStep { HelpLevel=2, Text=second, BoldTerms=PromptTerms(second) }, new MissionHelpStep { HelpLevel=3, Text=third, BoldTerms=PromptTerms(third) } };
-        }
     }
 }

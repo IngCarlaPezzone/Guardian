@@ -21,13 +21,6 @@ namespace Guardian
 
         public static string WritingAnswerRevealed(string answer) { return "Se escribe: " + answer + ". Ahora escribilo vos correctamente."; }
 
-        public static List<string> PromptTerms(string prompt)
-        {
-            var terms = new List<string>();
-            foreach (var term in new [] { "Cuántos", "Cuántas", "Cuál", "Qué", "Cuándo", "día de la semana", "día del mes", "mes", "año", "estación", "apellido", "edad", "fecha de nacimiento", "cantidad", "antes", "después", "siguiente", "anterior", "primero", "último" }) if (prompt.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0) terms.Add(term);
-            return terms;
-        }
-
         public static List<MissionHelpStep> HelpSteps(Mission mission)
         {
             string one = "Respondé con el dato que pide esta consigna.";
@@ -60,6 +53,6 @@ namespace Guardian
             return new List<MissionHelpStep> { Step(1, one), Step(2, two), Step(3, three) };
         }
 
-        private static MissionHelpStep Step(int level, string text) { return new MissionHelpStep { HelpLevel = level, Text = text, BoldTerms = PromptTerms(text) }; }
+        private static MissionHelpStep Step(int level, string text) { return new MissionHelpStep { HelpLevel = level, Text = text }; }
     }
 }

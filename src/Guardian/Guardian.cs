@@ -2050,8 +2050,7 @@ namespace Guardian
         private int _attempt = 1;
         private int _maxHelpLevelUsed;
         private int _helpRequestsCount;
-        private bool _helpLevel2Shown;
-        private bool _helpLevel3Unlocked;
+        private bool _hasNonOrthographicFailure;
         private bool _hadOrthographicError;
         private int _writingCorrectionCount;
         private bool _writingAnswerRevealed;
@@ -2118,7 +2117,7 @@ namespace Guardian
                 MaxWidth = 640,
                 Margin = new Thickness(0, 0, 0, 18)
             };
-            RenderRichText(_promptText, mission.Prompt, mission.PromptBoldTerms);
+            _promptText.Text = mission.Prompt;
             panel.Children.Add(_promptText);
             _answerBox = new TextBox
             {
@@ -2329,8 +2328,10 @@ namespace Guardian
                 _feedbackIcon.Visibility = Visibility.Collapsed;
                 _feedback.Text = "";
                 _routine.Visibility = Visibility.Visible;
-                if (_helpLevel2Shown) _helpLevel3Unlocked = true;
-                UpdateHelpButton();
+                _hasNonOrthographicFailure = true;
+                if (_maxHelpLevelUsed == 1) ShowHelp(2, false);
+                else if (_maxHelpLevelUsed == 2) ShowHelp(3, false);
+                else UpdateHelpButton();
                 _answerBox.SelectAll();
                 var failedPayload = TelemetryPayload();
                 failedPayload["reason"] = "wrong_answer";
@@ -2354,18 +2355,22 @@ namespace Guardian
 
         private void RequestNextHelp()
         {
-            var next = _maxHelpLevelUsed + 1;
-            if (next == 3 && !_helpLevel3Unlocked) return;
+            var next = 1;
+            if (!_hasNonOrthographicFailure || _maxHelpLevelUsed != 0) return;
+            ShowHelp(next, true);
+        }
+
+        private void ShowHelp(int next, bool requestedByUser)
+        {
             MissionHelpStep step = null;
             if (_mission.HelpSteps != null) foreach (var candidate in _mission.HelpSteps) if (candidate.HelpLevel == next) { step = candidate; break; }
             if (step == null) return;
-            var text = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(7, 4, 0, 4), MaxWidth = 560 };
-            RenderRichText(text, step.Text, step.BoldTerms);
+            var text = new TextBlock { Text = step.Text, Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(7, 4, 0, 4), MaxWidth = 560 };
             var helpRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
             helpRow.Children.Add(CreateIcon(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", 28));
             helpRow.Children.Add(text);
             _helpPanel.Children.Add(helpRow);
-            _maxHelpLevelUsed = next; _helpRequestsCount++; if (next == 2) _helpLevel2Shown = true;
+            _maxHelpLevelUsed = next; if (requestedByUser) _helpRequestsCount++;
             var payload = TelemetryPayload(); payload["help_level"] = next;
             _logger.Log("MissionHelpRequested", payload);
             UpdateHelpButton();
@@ -2373,10 +2378,8 @@ namespace Guardian
 
         private void UpdateHelpButton()
         {
-            if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || _maxHelpLevelUsed >= 3) { _helpButton.Visibility = Visibility.Collapsed; return; }
-            var next = _maxHelpLevelUsed + 1;
-            if (next == 3 && !_helpLevel3Unlocked) { _helpButton.Visibility = Visibility.Collapsed; return; }
-            _helpButton.Content = CreateIconButtonContent(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", next == 1 ? MissionContent.RephraseButton : next == 2 ? MissionContent.HintButton : MissionContent.GuidedButton);
+            if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || !_hasNonOrthographicFailure || _maxHelpLevelUsed != 0) { _helpButton.Visibility = Visibility.Collapsed; return; }
+            _helpButton.Content = CreateIconButtonContent("rephrase.png", MissionContent.RephraseButton);
             _helpButton.Visibility = Visibility.Visible;
         }
 
@@ -2413,15 +2416,6 @@ namespace Guardian
 
         private static string PrefixHint(string value) { if (string.IsNullOrWhiteSpace(value)) return "la palabra"; var count = value.Length >= 4 ? 3 : 1; return value.Substring(0, count); }
 
-        internal static void RenderRichText(TextBlock block, string text, IList<string> terms)
-        {
-            block.Inlines.Clear(); if (string.IsNullOrEmpty(text)) return;
-            var matches = new List<Tuple<int, int>>();
-            if (terms != null) foreach (var term in terms) { if (string.IsNullOrWhiteSpace(term)) continue; var start = 0; while (start < text.Length) { var index = text.IndexOf(term, start, StringComparison.OrdinalIgnoreCase); if (index < 0) break; matches.Add(Tuple.Create(index, term.Length)); start = index + term.Length; } }
-            matches.Sort(delegate(Tuple<int,int> a, Tuple<int,int> b) { return a.Item1.CompareTo(b.Item1); }); int cursor = 0;
-            foreach (var match in matches) { if (match.Item1 < cursor) continue; if (match.Item1 > cursor) block.Inlines.Add(new Run(text.Substring(cursor, match.Item1-cursor))); block.Inlines.Add(new Run(text.Substring(match.Item1, match.Item2)) { FontWeight = FontWeights.Bold }); cursor = match.Item1 + match.Item2; }
-            if (cursor < text.Length) block.Inlines.Add(new Run(text.Substring(cursor)));
-        }
 
         private void RequestUnlock()
         {
