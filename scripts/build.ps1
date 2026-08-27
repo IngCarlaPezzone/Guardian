@@ -59,7 +59,7 @@ if ($LASTEXITCODE -ne 0) {
 Copy-Item -Force (Join-Path $root "src\Guardian\App.config") "$out.config"
 $assetOutputDir = Join-Path $outDir "Assets\Icons"
 New-Item -ItemType Directory -Force -Path $assetOutputDir | Out-Null
-Copy-Item -Force (Join-Path $root "src\Guardian\Assets\Icons\help-lightbulb.png") (Join-Path $assetOutputDir "help-lightbulb.png")
+Copy-Item -Force (Join-Path $root "src\Guardian\Assets\Icons\*.png") $assetOutputDir
 & $csc `
   /nologo `
   /target:winexe `

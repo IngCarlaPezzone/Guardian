@@ -2035,7 +2035,8 @@ namespace Guardian
         private readonly TextBox _answerBox;
         private readonly TextBlock _feedback;
         private readonly TextBlock _promptText;
-        private readonly TextBlock _routine;
+        private readonly StackPanel _routine;
+        private readonly Image _feedbackIcon;
         private readonly StackPanel _helpPanel;
         private readonly Button _helpButton;
         private readonly Button _exitButton;
@@ -2152,9 +2153,14 @@ namespace Guardian
                 TextAlignment = TextAlignment.Center,
                 MinHeight = 28
             };
-            panel.Children.Add(_feedback);
+            _feedbackIcon = CreateIcon("spelling.png", 24);
+            _feedbackIcon.Visibility = Visibility.Collapsed;
+            var feedbackPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) };
+            feedbackPanel.Children.Add(_feedbackIcon);
+            feedbackPanel.Children.Add(_feedback);
+            panel.Children.Add(feedbackPanel);
 
-            _routine = new TextBlock { Text = "🔄 Probemos otra vez.\n👀 MIRO  →  🧠 PIENSO  →  ✍️ RESPONDO", Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), FontSize = 17, TextAlignment = TextAlignment.Center, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 10) };
+            _routine = CreateRoutinePanel();
             panel.Children.Add(_routine);
             _helpPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
             panel.Children.Add(_helpPanel);
@@ -2292,6 +2298,7 @@ namespace Guardian
             var result = analysis.Result;
             if (result == MissionAnswerResult.Invalid)
             {
+                _feedbackIcon.Visibility = Visibility.Collapsed;
                 _feedback.Text = "Revis\u00e1 la respuesta e intent\u00e1 de nuevo.";
                 var invalidPayload = TelemetryPayload();
                 invalidPayload["reason"] = "invalid_input";
@@ -2305,9 +2312,10 @@ namespace Guardian
                 _hadOrthographicError = true;
                 _writingCorrectionCount++;
                 var stage = _writingCorrectionCount >= 3 ? 3 : _writingCorrectionCount;
-                if (stage == 1) _feedback.Text = "✏️ Parece que sabés la respuesta. Revisá cómo la escribiste.";
-                else if (stage == 2) _feedback.Text = "✏️ Empieza con " + PrefixHint(analysis.MatchedAcceptedAnswer) + "...";
-                else { _writingAnswerRevealed = true; _feedback.Text = "✏️ Se escribe " + analysis.MatchedAcceptedAnswer + ". Ahora escribilo vos correctamente."; }
+                _feedbackIcon.Visibility = Visibility.Visible;
+                if (stage == 1) _feedback.Text = "Parece que sabés la respuesta. Revisá cómo la escribiste.";
+                else if (stage == 2) _feedback.Text = "Empieza con " + PrefixHint(analysis.MatchedAcceptedAnswer) + "...";
+                else { _writingAnswerRevealed = true; _feedback.Text = "Se escribe " + analysis.MatchedAcceptedAnswer + ". Ahora escribilo vos correctamente."; }
                 _answerBox.SelectAll();
                 var spellingPayload = TelemetryPayload(); spellingPayload["reason"] = "orthographic_error";
                 _logger.Log("MissionFailed", spellingPayload);
@@ -2319,6 +2327,7 @@ namespace Guardian
 
             if (result == MissionAnswerResult.Wrong)
             {
+                _feedbackIcon.Visibility = Visibility.Collapsed;
                 _feedback.Text = "";
                 _routine.Visibility = Visibility.Visible;
                 if (_helpLevel2Shown) _helpLevel3Unlocked = true;
@@ -2351,9 +2360,12 @@ namespace Guardian
             MissionHelpStep step = null;
             if (_mission.HelpSteps != null) foreach (var candidate in _mission.HelpSteps) if (candidate.HelpLevel == next) { step = candidate; break; }
             if (step == null) return;
-            var text = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontFamily = new FontFamily("Segoe UI Emoji"), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 4) };
-            RenderRichText(text, (next == 1 ? "❓ " : next == 2 ? "🧩 " : "🧭 ") + step.Text, step.BoldTerms);
-            _helpPanel.Children.Add(text);
+            var text = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(7, 4, 0, 4), MaxWidth = 560 };
+            RenderRichText(text, step.Text, step.BoldTerms);
+            var helpRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            helpRow.Children.Add(CreateIcon(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", 25));
+            helpRow.Children.Add(text);
+            _helpPanel.Children.Add(helpRow);
             _maxHelpLevelUsed = next; _helpRequestsCount++; if (next == 2) _helpLevel2Shown = true;
             var payload = TelemetryPayload(); payload["help_level"] = next;
             _logger.Log("MissionHelpRequested", payload);
@@ -2365,22 +2377,40 @@ namespace Guardian
             if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || _maxHelpLevelUsed >= 3) { _helpButton.Visibility = Visibility.Collapsed; return; }
             var next = _maxHelpLevelUsed + 1;
             if (next == 3 && !_helpLevel3Unlocked) { _helpButton.Visibility = Visibility.Collapsed; return; }
-            _helpButton.Content = next == 1 ? "❓ Decilo de otra manera" : next == 2 ? CreateWritingHintButtonContent() : "🧭 Guiame un poco más";
+            _helpButton.Content = CreateIconButtonContent(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", next == 1 ? "Decilo de otra manera" : next == 2 ? "Dame una pista" : "Guiame un poco más");
             _helpButton.Visibility = Visibility.Visible;
         }
 
-        private static object CreateWritingHintButtonContent()
+        private static StackPanel CreateIconButtonContent(string iconName, string label)
         {
             var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            var assetPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Assets", "Icons", "help-lightbulb.png");
-            if (File.Exists(assetPath))
-            {
-                var image = new Image { Width = 26, Height = 26, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 7, 0) };
-                var source = new BitmapImage(); source.BeginInit(); source.UriSource = new Uri(assetPath, UriKind.Absolute); source.CacheOption = BitmapCacheOption.OnLoad; source.EndInit(); image.Source = source;
-                panel.Children.Add(image);
-            }
-            panel.Children.Add(new TextBlock { Text = "Dame una pista", VerticalAlignment = VerticalAlignment.Center });
+            var image = CreateIcon(iconName, 24); image.Margin = new Thickness(0, 0, 7, 0); panel.Children.Add(image);
+            panel.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
             return panel;
+        }
+
+        private static StackPanel CreateRoutinePanel()
+        {
+            var panel = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 10) };
+            panel.Children.Add(new TextBlock { Text = "Probemos otra vez.", Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), FontSize = 17, TextAlignment = TextAlignment.Center });
+            var steps = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+            AddRoutineStep(steps, "look.png", "MIRO"); AddRoutineStep(steps, "think.png", "PIENSO"); AddRoutineStep(steps, "write.png", "RESPONDO"); panel.Children.Add(steps);
+            return panel;
+        }
+
+        private static void AddRoutineStep(StackPanel panel, string iconName, string label)
+        {
+            if (panel.Children.Count > 0) panel.Children.Add(new TextBlock { Text = "  →  ", VerticalAlignment = VerticalAlignment.Center, Foreground = new SolidColorBrush(Color.FromRgb(75, 85, 99)) });
+            panel.Children.Add(CreateIcon(iconName, 23)); panel.Children.Add(new TextBlock { Text = " " + label, VerticalAlignment = VerticalAlignment.Center, Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), FontSize = 16 });
+        }
+
+        private static Image CreateIcon(string iconName, double size)
+        {
+            var image = new Image { Width = size, Height = size, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center };
+            var assetPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Assets", "Icons", iconName);
+            if (!File.Exists(assetPath)) return image;
+            var source = new BitmapImage(); source.BeginInit(); source.UriSource = new Uri(assetPath, UriKind.Absolute); source.CacheOption = BitmapCacheOption.OnLoad; source.EndInit(); image.Source = source;
+            return image;
         }
 
         private static string PrefixHint(string value) { if (string.IsNullOrWhiteSpace(value)) return "la palabra"; var count = value.Length >= 4 ? 3 : 1; return value.Substring(0, count); }
