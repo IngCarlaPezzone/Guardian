@@ -512,7 +512,7 @@ def queue_device_command(device_id: str, command_type: str, db: Session) -> None
 @router.post("/devices/{device_id}/commands/{command_type}")
 def request_named_device_command(device_id: str, command_type: str, db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     queue_device_command(device_id, command_type, db)
-    return RedirectResponse("/admin/", status_code=303)
+    return RedirectResponse(f"/admin/devices/{device_id}/missions", status_code=303)
 
 
 @router.post("/devices/{device_id}/commands")

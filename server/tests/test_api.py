@@ -177,16 +177,22 @@ def test_admin_named_pause_and_resume_commands_follow_heartbeat_state():
 
     pause = client.post(f"/admin/devices/{device_id}/commands/pause_monitoring", follow_redirects=False)
     assert pause.status_code == 303
+    assert pause.headers["location"] == f"/admin/devices/{device_id}/missions"
     pending_pause = client.get(f"/api/v1/devices/{device_id}/commands/pending", headers=headers).json()
     assert pending_pause["command_type"] == "pause_monitoring"
     client.post(f"/api/v1/devices/{device_id}/commands/{pending_pause['command_id']}/status", headers=headers, json={"status": "success"})
+    with SessionLocal() as db:
+        assert db.get(Device, device_id).monitoring_enabled is False
     client.post(f"/api/v1/devices/{device_id}/heartbeat", headers=headers, json={"machine_name": "Resume-PC", "client_version": "0.3.3", "effective_interval_seconds": 900, "monitoring_enabled": False})
 
     resume = client.post(f"/admin/devices/{device_id}/commands/resume_monitoring", follow_redirects=False)
     assert resume.status_code == 303
+    assert resume.headers["location"] == f"/admin/devices/{device_id}/missions"
     pending_resume = client.get(f"/api/v1/devices/{device_id}/commands/pending", headers=headers).json()
     assert pending_resume["command_type"] == "resume_monitoring"
     client.post(f"/api/v1/devices/{device_id}/commands/{pending_resume['command_id']}/status", headers=headers, json={"status": "success"})
+    with SessionLocal() as db:
+        assert db.get(Device, device_id).monitoring_enabled is True
     client.post(f"/api/v1/devices/{device_id}/heartbeat", headers=headers, json={"machine_name": "Resume-PC", "client_version": "0.3.3", "effective_interval_seconds": 900, "monitoring_enabled": True})
 
     with SessionLocal() as db:
@@ -483,7 +489,7 @@ def test_configuration_update_status_uses_device_state_and_human_messages():
         db.commit()
 
     pending = client.get(f"/admin/devices/{offline_id}/missions")
-    assert "Dispositivo:" in pending.text
+    assert "Estado:" in pending.text
     assert "Offline" in pending.text
     assert "Estado de actualización: Pendiente" in pending.text
     assert "Pendiente — el dispositivo está offline. La actualización comenzará cuando vuelva a conectarse." in pending.text
@@ -618,7 +624,9 @@ def test_configuration_update_controls_are_stable_and_reuse_update_command_flow(
     no_releases = client.get(f"/admin/devices/{device_id}/missions")
     assert no_releases.status_code == 200
     assert 'aria-current="page">Configuración' not in no_releases.text
-    assert "Release objetivo" in no_releases.text
+    assert "Releases disponibles" in no_releases.text
+    assert "Release objetivo" not in no_releases.text
+    assert "Dispositivo:" not in no_releases.text
     assert "No hay releases disponibles" in no_releases.text
     assert "No hay releases publicadas para este entorno." in no_releases.text
     assert "<button disabled>Actualizar</button>" in no_releases.text

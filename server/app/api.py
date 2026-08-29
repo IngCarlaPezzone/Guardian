@@ -199,6 +199,8 @@ def device_command_status(command_id: str, payload: DeviceCommandStatusPayload, 
         command.acknowledged_at = utcnow()
     if payload.status in {"success", "failed"}:
         command.completed_at = utcnow()
+    if payload.status == "success" and command.command_type in {"pause_monitoring", "resume_monitoring"}:
+        device.monitoring_enabled = command.command_type == "resume_monitoring"
     db.commit()
     return {"ok": True}
 
