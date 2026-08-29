@@ -13,7 +13,7 @@ from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
 from server.app.metrics import dashboard_data
-from server.app.models import Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
+from server.app.models import DEVICE_KIND_STG_DEMO, DEVICE_KIND_STG_IMPORTED_TELEMETRY, Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.security import hash_secret, utcnow
 
 
@@ -58,6 +58,45 @@ def test_admin_css_is_served_with_a_content_version():
     assert ".card-grid" in css.text
 
 
+def test_dashboard_shows_operational_devices_and_hides_synthetic_stg_records_by_default():
+    client = admin_client()
+    operational_id = "00000000-0000-4000-8000-000000000111"
+    demo_id = "00000000-0000-4000-8000-000000000112"
+    imported_id = "00000000-0000-4000-8000-000000000113"
+    with SessionLocal() as db:
+        db.add_all([
+            Device(id=operational_id, machine_name="Operational-Test-PC", display_name="PC TEST", token_hash=hash_secret("operational-token"), client_version="0.4.4-staging-stage3", last_seen_at=utcnow()),
+            Device(id=demo_id, machine_name="STG-ONLINE-ACTIVE", display_name="Demo Online Activo", token_hash=hash_secret("demo-token"), device_kind=DEVICE_KIND_STG_DEMO),
+            Device(id=imported_id, machine_name="STG-IMPORTED-TELEMETRY-1", display_name="Telemetría importada STG 1", token_hash=hash_secret("import-token"), device_kind=DEVICE_KIND_STG_IMPORTED_TELEMETRY),
+            DeviceConfiguration(device_id=operational_id, interval_seconds=900, version=1),
+        ])
+        db.commit()
+
+    dashboard = client.get("/admin/")
+    assert dashboard.status_code == 200
+    assert "PC TEST" in dashboard.text
+    assert "Operational-Test-PC" in dashboard.text
+    assert "Demo Online Activo" not in dashboard.text
+    assert "Telemetría importada STG 1" not in dashboard.text
+    assert "Online · Activo" in dashboard.text
+    assert "Versión:" in dashboard.text
+    assert "0.4.4-staging-stage3" in dashboard.text
+    assert "Intervalo:" in dashboard.text
+    assert "15 min" in dashboard.text
+    assert "Pausar misiones" in dashboard.text
+    assert "Probar misión ahora" in dashboard.text
+    assert f"/admin/devices/{operational_id}/activity" in dashboard.text
+    assert f"/admin/devices/{operational_id}/missions" in dashboard.text
+    assert f"/admin/devices/{operational_id}/metrics" in dashboard.text
+    assert 'name="release_id"' not in dashboard.text
+    assert "Distribución" not in dashboard.text
+    assert 'href="/admin/releases"' in dashboard.text
+
+    synthetic = client.get("/admin/?show_synthetic=true")
+    assert "Demo Online Activo" in synthetic.text
+    assert "Telemetría importada STG 1" in synthetic.text
+
+
 def test_device_flow_config_and_update_status():
     client = TestClient(app)
     token = register(client)
@@ -76,7 +115,7 @@ def test_device_flow_config_and_update_status():
     assert config.json()["interval_seconds"] == 900
 
     with SessionLocal() as db:
-        cfg = db.query(DeviceConfiguration).first()
+        cfg = db.query(DeviceConfiguration).filter(DeviceConfiguration.device_id == "00000000-0000-4000-8000-000000000001").one()
         cfg.interval_seconds = 120
         cfg.version += 1
         release = Release(version="0.2.1", filename="Guardian-0.2.1.zip", sha256="a" * 64, file_size=10)
@@ -375,7 +414,7 @@ def test_admin_cancels_only_pending_update_and_prevents_duplicate_device_command
         assert db.query(DeviceCommand).filter(DeviceCommand.device_id == device_id).count() == 1
 
 
-def test_admin_describes_pending_update_for_offline_device():
+def test_admin_keeps_offline_quick_actions_visible_but_disabled():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-000000000089"
     with SessionLocal() as db:
@@ -388,10 +427,13 @@ def test_admin_describes_pending_update_for_offline_device():
 
     response = client.get("/admin/")
     assert response.status_code == 200
-    assert "esperando que el dispositivo se conecte" in response.text
+    assert "Pausar misiones" in response.text
+    assert "Probar misión ahora" in response.text
+    assert "disabled" in response.text
+    assert "esperando que el dispositivo se conecte" not in response.text
 
 
-def test_admin_renders_release_notes_and_success_note_without_error_label():
+def test_admin_keeps_release_details_outside_dashboard():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-000000000086"
     with SessionLocal() as db:
@@ -404,10 +446,9 @@ def test_admin_renders_release_notes_and_success_note_without_error_label():
 
     dashboard = client.get("/admin/")
     releases = client.get("/admin/releases")
-    assert "Short release description" in dashboard.text
+    assert "Short release description" not in dashboard.text
     assert "Short release description" in releases.text
-    assert "Nota" in dashboard.text
-    assert "Error</dt><dd class=\"error\">already running target version" not in dashboard.text
+    assert "Actualización success" not in dashboard.text
 
 
 def test_admin_bad_delete_confirmation_redirects_without_deleting():

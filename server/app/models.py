@@ -14,6 +14,11 @@ def new_id():
     return str(uuid.uuid4())
 
 
+DEVICE_KIND_OPERATIONAL = "operational"
+DEVICE_KIND_STG_DEMO = "stg_demo"
+DEVICE_KIND_STG_IMPORTED_TELEMETRY = "stg_imported_telemetry"
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -43,6 +48,7 @@ class Device(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     monitoring_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    device_kind: Mapped[str] = mapped_column(String(32), default=DEVICE_KIND_OPERATIONAL, server_default=DEVICE_KIND_OPERATIONAL, nullable=False)
 
     configuration: Mapped["DeviceConfiguration"] = relationship(back_populates="device", uselist=False)
     events: Mapped[list["DeviceEvent"]] = relationship(back_populates="device")

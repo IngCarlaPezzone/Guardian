@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from server.app.config import settings
 from server.app.db import get_db
-from server.app.models import AdminUser, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
+from server.app.models import DEVICE_KIND_OPERATIONAL, AdminUser, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.metrics import CATALOG, dashboard_data, device_timezone
 from server.app.security import VALID_DEVICE_COMMAND_TYPES, current_admin, utcnow, valid_interval, valid_semver, verify_secret
 from server.app.update_queue import active_update, cleanup_update_queue, command_last_change, latest_update_by_device
@@ -225,29 +225,26 @@ def render_mission_config(request: Request, device: Device, selected: list[str] 
 
 
 @router.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
-    devices = db.query(Device).order_by(Device.registered_at.desc()).all()
+def dashboard(
+    request: Request,
+    show_synthetic: bool = Query(False),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(current_admin),
+):
+    query = db.query(Device)
+    if not show_synthetic:
+        query = query.filter(Device.device_kind == DEVICE_KIND_OPERATIONAL)
+    devices = query.order_by(Device.registered_at.desc()).all()
     for device in devices:
         cleanup_update_queue(db, device)
     db.commit()
-    releases = db.query(Release).filter(Release.is_active.is_(True)).order_by(Release.created_at.desc()).all()
-    latest = releases[0] if releases else None
-    latest_updates = latest_update_by_device(db)
-    update_status_by_device = {device.id: update_view_model(latest_updates.get(device.id)) for device in devices}
     command_status_by_device = {device.id: active_device_command(db, device.id) for device in devices}
-    now = utcnow()
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "devices": devices,
-        "releases": releases,
-        "latest": latest,
-        "update_status_by_device": update_status_by_device,
         "command_status_by_device": command_status_by_device,
         "guardian_state_by_device": {device.id: device_guardian_state(device) for device in devices},
         "remote_controls_supported_by_device": {device.id: supports_remote_controls(device) for device in devices},
-        "online_by_device": {device.id: is_device_online(device) for device in devices},
-        "now": now,
-        "online_threshold_seconds": settings.online_threshold_seconds,
     })
 
 
