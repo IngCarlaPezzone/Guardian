@@ -29,6 +29,8 @@ El script:
 9. Updater inicia Guardian.
 10. Si el arranque falla, restaura backup y reporta `rolled_back`.
 
+La ubicación canónica de instalación es `%LOCALAPPDATA%\Guardian` (o el override explícito `GUARDIAN_HOME` sólo para instalaciones de prueba/STG). El updater, el autoarranque y los relanzamientos usan esa misma ubicación. Si existe un home explícito, la entrada de autoarranque conserva ese home mediante `--home` para sobrevivir al reboot sin caer en la instalación de PROD. Al iniciar, un cliente nuevo corrige idempotentemente `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Guardian` si conserva una ruta histórica y registra telemetría técnica del ejecutable y de la reparación. Ejecutar `Guardian.exe` desde un ZIP también copia los binarios a la ubicación canónica antes de registrar el autoarranque.
+
 Nunca se reemplazan ni eliminan `config.json`, `events.jsonl`, `DeviceId` ni `DeviceToken`.
 
 ## Validacion Etapa 1: staging -> real

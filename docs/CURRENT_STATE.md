@@ -6,10 +6,14 @@ Guardian opera con dos entornos aislados.
 
 | Entorno | Compose | Servicios | Puerto Admin/API | Estado mutable |
 | --- | --- | --- | --- | --- |
-| PROD | `deploy/docker-compose.yml` | `postgres`, `guardian-app` (y `cloudflared` opcional) | `8080` | `.env`, `guardian_postgres_data`, `releases/` |
+| PROD | `deploy/docker-compose.yml` (`guardian-prod`) | `postgres`, `guardian-app` (y `cloudflared` opcional) | `8080` | `.env`, `deploy_guardian_postgres_data`, `releases/` |
 | STG | `deploy/docker-compose.stg.yml` | `guardian-stg-db`, `guardian-stg-app` | `8081` | `.env.stg`, `guardian_stg_postgres_data`, `releases-stg/` |
 
 STG no comparte contenedores, volumen PostgreSQL, base, registry de dispositivos, RemoteConfig, telemetría, comandos ni releases con PROD. El Admin STG muestra persistentemente **Guardian Admin — STG**. PROD no muestra ese rótulo.
+
+Los servicios de ambos Compose usan `restart: unless-stopped`: al iniciar Docker Desktop tras iniciar sesión en Windows, Docker recupera PostgreSQL, API y —cuando corresponda— Cloudflare. Esta política no anula una detención manual explícita.
+
+El proyecto Compose de PROD se llama `guardian-prod`. El volumen histórico externo de PostgreSQL conserva explícitamente el nombre físico `deploy_guardian_postgres_data` para que el renombrado de contenedores no cree una base vacía ni requiera migrar datos.
 
 ## Configuración
 
@@ -70,11 +74,36 @@ Para generar, copiar y registrar una release sólo en STG:
 
 El artefacto se monta desde `releases-stg/` y el registro se guarda en la DB STG. Nunca aparece en Admin PROD ni puede ser seleccionado por un dispositivo PROD.
 
+### Validación RC de persistencia tras reboot
+
+La RC `0.4.2-rc.2` validó en un cliente TEST STG el flujo completo `0.4.1 → 0.4.2-rc.2 → reboot → 0.4.2-rc.2 → segundo reboot → 0.4.2-rc.2`.
+
+- El valor `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Guardian` apunta a la ruta canónica y usa `--minimized`.
+- Para un home STG explícito, la misma entrada incluye `--home <directorio-STG>`; así un reboot no cae en la instalación local de PROD.
+- Se comprobó la reparación idempotente (`already_canonical`) y la reparación de una ruta temporal histórica simulada (`repaired_to_canonical`), seguida de reboot exitoso.
+- Se comprobó el arranque local sin API disponible; cuando STG volvió a estar disponible, el cliente reanudó heartbeats sin requerir inicio manual.
+
+`0.4.2-rc.1` queda descartada para promoción: resolvía el home explícito demasiado tarde durante el proceso de arranque. No promover esa RC a PROD.
+
+## Feature de comprensión en STG
+
+La feature `0.4.3-staging-comprehension-help.6` fue validada manualmente en STG. Incluye ayudas progresivas, rutina visual, ortografía independiente, íconos PNG y el catálogo final de textos de comprensión. La variante `next_month_ask_2` fue retirada; `vocab_before` y `vocab_after` permanecen disponibles.
+
+La validación confirmó el flujo de las ayudas y los textos dinámicos locales. La RC `0.4.3-rc.3` validó el updater y el reinicio en STG. Respalda e instala `Assets\Icons` y, además, embebe los PNG en `Guardian.exe` para cubrir actualizaciones iniciadas por un updater anterior. `0.4.3-rc` y `0.4.3-rc.2` quedan descartadas para promoción.
+
+La release `0.4.3` está registrada en PROD y fue reemplazada para la validación posterior por la corrección `0.4.4`. Ninguna de las dos se envió automáticamente a un dispositivo.
+
+## Corrección de RemoteConfig en STG
+
+La build `0.4.4-staging-remote-config.1` validó en STG que, si la configuración local de misiones está desactualizada pero su versión remota coincide, Guardian vuelve a aplicar habilidades y perfil desde el servidor. Con una única skill de Comprensión habilitada, la misión posterior fue de Comprensión y no de Matemática.
+
+La corrección fue integrada en `main` y la release `0.4.4` quedó registrada en PROD. No se envió a ningún dispositivo: el siguiente paso obligatorio es actualizar y validar la PC TEST contra PROD; sólo después podrá considerarse el dispositivo productivo final.
+
 ## Versionado y promoción
 
-PROD actual usa SemVer normal: `0.4.1`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+La base estable actual del repositorio es `0.4.4`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
 
-No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. Al aprobar la feature, crear una RC basada en la próxima versión productiva: si PROD es `0.4.1`, probar `0.4.2-rc` integralmente en STG —incluido updater cuando aplique—. Si aprueba, publicar `0.4.2` en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
+No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. La RC `0.4.3-rc.3` se probó integralmente en STG —incluido updater—; `0.4.3` y la corrección `0.4.4` están registradas en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
 
 El rollout obligatorio en PROD es: **PC TEST → validar operación → dispositivo productivo final**.
 

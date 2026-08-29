@@ -9,6 +9,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Web.Script.Serialization;
 using System.Threading;
+using GuardianShared;
 
 namespace GuardianUpdater
 {
@@ -112,12 +113,14 @@ namespace GuardianUpdater
                 BackupIfExists(appDir, backupDir, "Guardian.exe");
                 BackupIfExists(appDir, backupDir, "Guardian.exe.config");
                 BackupIfExists(appDir, backupDir, "GuardianUpdater.exe");
+                CopyDirectoryIfExists(appDir, backupDir, "Assets");
 
                 try
                 {
                     StopGuardian(log);
                     CopyIfExists(extractDir, appDir, "Guardian.exe");
                     CopyIfExists(extractDir, appDir, "Guardian.exe.config");
+                    CopyDirectoryIfExists(extractDir, appDir, "Assets");
                     ScheduleUpdaterReplacement(extractDir, appDir, log);
                     StartGuardian(appDir);
                     Thread.Sleep(5000);
@@ -256,7 +259,7 @@ namespace GuardianUpdater
 
         private static void StartGuardian(string appDir)
         {
-            var exe = Path.Combine(appDir, "Guardian.exe");
+            var exe = GuardianInstallPaths.GuardianExecutablePath;
             if (!File.Exists(exe)) throw new FileNotFoundException("Guardian.exe not found", exe);
             Process.Start(new ProcessStartInfo(exe)
             {
@@ -278,6 +281,25 @@ namespace GuardianUpdater
             if (File.Exists(source)) File.Copy(source, Path.Combine(appDir, fileName), true);
         }
 
+        internal static void CopyDirectoryIfExists(string sourceRoot, string destinationRoot, string directoryName)
+        {
+            var source = Path.Combine(sourceRoot, directoryName);
+            if (!Directory.Exists(source)) return;
+            var destination = Path.Combine(destinationRoot, directoryName);
+            foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
+            {
+                Directory.CreateDirectory(Path.Combine(destination, directory.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+            }
+            Directory.CreateDirectory(destination);
+            foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+            {
+                var relative = file.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var target = Path.Combine(destination, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                File.Copy(file, target, true);
+            }
+        }
+
         private static void RestoreBackup(string backupDir, string appDir, UpdaterLog log)
         {
             foreach (var fileName in new[] { "Guardian.exe", "Guardian.exe.config" })
@@ -289,6 +311,7 @@ namespace GuardianUpdater
                     log.Write("Restored " + fileName);
                 }
             }
+            CopyDirectoryIfExists(backupDir, appDir, "Assets");
         }
 
         private static void ScheduleUpdaterReplacement(string sourceDir, string appDir, UpdaterLog log)
@@ -357,9 +380,7 @@ namespace GuardianUpdater
 
         private static string ResolveAppDataDir()
         {
-            var overrideDir = Environment.GetEnvironmentVariable("GUARDIAN_HOME");
-            if (!string.IsNullOrWhiteSpace(overrideDir)) return overrideDir;
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Guardian");
+            return GuardianInstallPaths.InstallDirectory;
         }
     }
 
@@ -600,6 +621,13 @@ namespace GuardianUpdater
                     hash = BitConverter.ToString(sha.ComputeHash(input)).Replace("-", "").ToLowerInvariant();
                 }
                 if (hash.Length != 64) return 2;
+                var sourceRoot = Path.Combine(temp, "source");
+                var destinationRoot = Path.Combine(temp, "destination");
+                var iconPath = Path.Combine(sourceRoot, "Assets", "Icons", "sample.png");
+                Directory.CreateDirectory(Path.GetDirectoryName(iconPath));
+                File.WriteAllText(iconPath, "sample-icon", Encoding.UTF8);
+                Program.CopyDirectoryIfExists(sourceRoot, destinationRoot, "Assets");
+                if (!File.Exists(Path.Combine(destinationRoot, "Assets", "Icons", "sample.png"))) return 3;
                 return 0;
             }
             finally

@@ -22,6 +22,7 @@ New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 Copy-Item -Force (Join-Path $root "dist\Guardian.exe") (Join-Path $packageDir "Guardian.exe")
 Copy-Item -Force (Join-Path $root "dist\Guardian.exe.config") (Join-Path $packageDir "Guardian.exe.config")
 Copy-Item -Force (Join-Path $root "dist\GuardianUpdater.exe") (Join-Path $packageDir "GuardianUpdater.exe")
+Copy-Item -Recurse -Force (Join-Path $root "dist\Assets") (Join-Path $packageDir "Assets")
 if (Test-Path $zipPath) { Remove-Item -Force -LiteralPath $zipPath }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 [System.IO.Compression.ZipFile]::CreateFromDirectory($packageDir, $zipPath)

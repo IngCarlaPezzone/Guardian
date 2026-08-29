@@ -2,6 +2,7 @@
 services:
   guardian-stg-db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -26,6 +27,7 @@ services:
       GUARDIAN_ENVIRONMENT: STG
     ports:
       - "8081:8080"
+    restart: unless-stopped
     volumes:
       - ../releases-stg:/data/guardian/releases
     depends_on:

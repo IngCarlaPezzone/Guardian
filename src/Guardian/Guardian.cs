@@ -14,10 +14,13 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using WinForms = System.Windows.Forms;
+using GuardianShared;
 
 namespace Guardian
 {
@@ -30,6 +33,11 @@ namespace Guardian
             try
             {
                 var command = CommandLine.Parse(args);
+                var requestedHome = command.Value("--home");
+                if (!string.IsNullOrWhiteSpace(requestedHome))
+                {
+                    Environment.SetEnvironmentVariable("GUARDIAN_HOME", requestedHome, EnvironmentVariableTarget.Process);
+                }
                 if (command.Has("--self-test"))
                 {
                     NativeConsole.Attach();
@@ -38,6 +46,7 @@ namespace Guardian
                 if (command.Has("--install-startup"))
                 {
                     NativeConsole.Attach();
+                    CanonicalInstallation.EnsureCurrentBuild();
                     return StartupManager.Install();
                 }
                 if (command.Has("--uninstall-startup"))
@@ -68,14 +77,33 @@ namespace Guardian
                 }
 
                 var config = GuardianConfig.Load();
-                instanceGuard = SingleInstanceGuard.TryAcquire();
-                if (!instanceGuard.IsAcquired) return 0;
-
+                var installation = CanonicalInstallation.EnsureCurrentBuild();
                 var logger = new EventLogger(config);
+                var startup = StartupManager.EnsureCanonicalRegistration(config.AutoStartEnabled);
+                instanceGuard = SingleInstanceGuard.TryAcquire();
+                if (!instanceGuard.IsAcquired)
+                {
+                    logger.Log("GuardianDuplicateInstanceSkipped", new Dictionary<string, object>
+                    {
+                        { "client_version", AppInfo.Version },
+                        { "executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.ExecutingExecutablePath) },
+                        { "canonical_executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.GuardianExecutablePath) },
+                        { "startup_command", GuardianInstallPaths.RedactForTelemetry(startup.ConfiguredCommand) },
+                        { "startup_repair_result", startup.Result },
+                        { "process_id", Process.GetCurrentProcess().Id }
+                    });
+                    return 0;
+                }
                 logger.Log("GuardianStarted", new Dictionary<string, object>
                 {
                     { "version", AppInfo.Version },
-                    { "mode", command.Has("--minimized") ? "startup" : "manual" }
+                    { "mode", command.Has("--minimized") ? "startup" : "manual" },
+                    { "executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.ExecutingExecutablePath) },
+                    { "canonical_executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.GuardianExecutablePath) },
+                    { "installation_result", installation.Result },
+                    { "startup_command", GuardianInstallPaths.RedactForTelemetry(startup.ConfiguredCommand) },
+                    { "startup_repair_result", startup.Result },
+                    { "process_id", Process.GetCurrentProcess().Id }
                 });
 
                 if (config.WatchdogEnabled && !command.Has("--no-watchdog"))
@@ -135,7 +163,12 @@ namespace Guardian
     {
         public const string Name = "Guardian";
         public static readonly string Version = VersionInfo.Version;
-        public static readonly string AppDataDir = ResolveAppDataDir();
+        // Do not cache this path: --home is applied at the beginning of Main
+        // and must be honored even when the CLR initializes this type early.
+        public static string AppDataDir
+        {
+            get { return ResolveAppDataDir(); }
+        }
         public static string IntentionalExitFlagPath
         {
             get { return Path.Combine(AppDataDir, "intentional-exit.flag"); }
@@ -147,10 +180,44 @@ namespace Guardian
 
         private static string ResolveAppDataDir()
         {
-            var overrideDir = Environment.GetEnvironmentVariable("GUARDIAN_HOME");
-            if (!string.IsNullOrWhiteSpace(overrideDir)) return overrideDir;
+            return GuardianInstallPaths.InstallDirectory;
+        }
+    }
 
-            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Guardian");
+    public sealed class CanonicalInstallationResult
+    {
+        public string Result { get; set; }
+    }
+
+    public static class CanonicalInstallation
+    {
+        // A release may be launched directly from an extracted ZIP. Copy its
+        // binaries before enabling startup so reboot never depends on that ZIP.
+        public static CanonicalInstallationResult EnsureCurrentBuild()
+        {
+            var result = new CanonicalInstallationResult { Result = "already_canonical" };
+            try
+            {
+                var source = GuardianInstallPaths.ExecutingExecutablePath;
+                var destination = GuardianInstallPaths.GuardianExecutablePath;
+                if (GuardianInstallPaths.SamePath(source, destination)) return result;
+
+                Directory.CreateDirectory(GuardianInstallPaths.InstallDirectory);
+                File.Copy(source, destination, true);
+                CopySiblingIfPresent(source + ".config", destination + ".config");
+                CopySiblingIfPresent(Path.Combine(Path.GetDirectoryName(source), "GuardianUpdater.exe"), GuardianInstallPaths.UpdaterExecutablePath);
+                result.Result = "migrated_to_canonical";
+            }
+            catch (Exception ex)
+            {
+                result.Result = "migration_failed:" + ex.GetType().Name;
+            }
+            return result;
+        }
+
+        private static void CopySiblingIfPresent(string source, string destination)
+        {
+            if (File.Exists(source)) File.Copy(source, destination, true);
         }
     }
 
@@ -1162,7 +1229,9 @@ namespace Guardian
                     _logger.Log("RemoteConfigFailed", new Dictionary<string, object> { { "message", "interval out of range" } });
                     return;
                 }
-                if (remote.version <= _config.RemoteConfigVersion && _config.IntervalSeconds == remote.interval_seconds && !_config.UseTestInterval) return;
+                var missionConfigNeedsApply = MissionConfigComparer.NeedsApply(_config.MissionConfig, remote.mission_config);
+                if (remote.version < _config.RemoteConfigVersion) return;
+                if (remote.version == _config.RemoteConfigVersion && _config.IntervalSeconds == remote.interval_seconds && !_config.UseTestInterval && !missionConfigNeedsApply) return;
                 var oldInterval = _config.EffectiveIntervalSeconds;
                 _config.IntervalSeconds = remote.interval_seconds;
                 _config.UseTestInterval = false;
@@ -1216,10 +1285,17 @@ namespace Guardian
             {
                 try
                 {
-                    var exeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                    var updater = !string.IsNullOrWhiteSpace(_config.UpdaterPath)
-                        ? _config.UpdaterPath
-                        : Path.Combine(exeDir ?? AppInfo.AppDataDir, "GuardianUpdater.exe");
+                    var updater = GuardianInstallPaths.UpdaterExecutablePath;
+                    if (!string.IsNullOrWhiteSpace(_config.UpdaterPath) && !GuardianInstallPaths.SamePath(_config.UpdaterPath, updater))
+                    {
+                        _logger.Log("UpdaterPathMigrated", new Dictionary<string, object>
+                        {
+                            { "configured_updater_path", GuardianInstallPaths.RedactForTelemetry(_config.UpdaterPath) },
+                            { "canonical_updater_path", GuardianInstallPaths.RedactForTelemetry(updater) }
+                        });
+                        _config.UpdaterPath = "";
+                        _config.Save();
+                    }
                     if (!File.Exists(updater))
                     {
                         _logger.Log("UpdateFailed", new Dictionary<string, object> { { "message", "GuardianUpdater.exe not found" } });
@@ -1961,6 +2037,10 @@ namespace Guardian
         private readonly TextBox _answerBox;
         private readonly TextBlock _feedback;
         private readonly TextBlock _promptText;
+        private readonly StackPanel _routine;
+        private readonly Image _feedbackIcon;
+        private readonly StackPanel _helpPanel;
+        private readonly Button _helpButton;
         private readonly Button _exitButton;
         private readonly Grid _adminOverlay;
         private readonly TextBox _adminUserBox;
@@ -1970,6 +2050,12 @@ namespace Guardian
         private bool _canExit;
         private bool _unlockRequested;
         private int _attempt = 1;
+        private int _maxHelpLevelUsed;
+        private int _helpRequestsCount;
+        private bool _hasNonOrthographicFailure;
+        private bool _hadOrthographicError;
+        private int _writingCorrectionCount;
+        private bool _writingAnswerRevealed;
 
         public event Action UnlockRequested;
         public event Action AdminShutdownRequested;
@@ -2025,7 +2111,6 @@ namespace Guardian
             });
             _promptText = new TextBlock
             {
-                Text = mission.Prompt,
                 Foreground = new SolidColorBrush(Color.FromRgb(17, 24, 39)),
                 FontSize = 42,
                 FontWeight = FontWeights.Bold,
@@ -2034,6 +2119,7 @@ namespace Guardian
                 MaxWidth = 640,
                 Margin = new Thickness(0, 0, 0, 18)
             };
+            _promptText.Text = mission.Prompt;
             panel.Children.Add(_promptText);
             _answerBox = new TextBox
             {
@@ -2068,7 +2154,25 @@ namespace Guardian
                 TextAlignment = TextAlignment.Center,
                 MinHeight = 28
             };
-            panel.Children.Add(_feedback);
+            _feedbackIcon = CreateIcon("spelling.png", 24);
+            _feedbackIcon.Visibility = Visibility.Collapsed;
+            var feedbackPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) };
+            feedbackPanel.Children.Add(_feedbackIcon);
+            feedbackPanel.Children.Add(_feedback);
+            panel.Children.Add(feedbackPanel);
+
+            _routine = CreateRoutinePanel();
+            panel.Children.Add(_routine);
+            _helpPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+            panel.Children.Add(_helpPanel);
+            _helpButton = new Button { FontSize = 16, Padding = new Thickness(14, 7, 14, 7), HorizontalAlignment = HorizontalAlignment.Center, Visibility = Visibility.Collapsed };
+            _helpButton.FontFamily = new FontFamily("Segoe UI Emoji");
+            _helpButton.Background = new SolidColorBrush(Color.FromRgb(219, 234, 254));
+            _helpButton.BorderBrush = new SolidColorBrush(Color.FromRgb(37, 99, 235));
+            _helpButton.Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175));
+            _helpButton.Click += delegate { RequestNextHelp(); };
+            panel.Children.Add(_helpButton);
+            UpdateHelpButton();
 
             card.Child = panel;
             Grid.SetRow(card, 1);
@@ -2191,38 +2295,136 @@ namespace Guardian
 
         private void CheckAnswer()
         {
-            var result = MissionValidator.Validate(_answerBox.Text, _mission);
+            var analysis = MissionValidator.Analyze(_answerBox.Text, _mission);
+            var result = analysis.Result;
             if (result == MissionAnswerResult.Invalid)
             {
+                _feedbackIcon.Visibility = Visibility.Collapsed;
                 _feedback.Text = "Revis\u00e1 la respuesta e intent\u00e1 de nuevo.";
-                var invalidPayload = MissionTelemetry.Payload(_mission, _attempt);
+                var invalidPayload = TelemetryPayload();
                 invalidPayload["reason"] = "invalid_input";
                 _logger.Log("MissionFailed", invalidPayload);
                 _attempt++;
                 return;
             }
 
+            if (result == MissionAnswerResult.OrthographicNearMatch)
+            {
+                _hadOrthographicError = true;
+                _writingCorrectionCount++;
+                var stage = _writingCorrectionCount >= 3 ? 3 : _writingCorrectionCount;
+                _feedbackIcon.Visibility = Visibility.Visible;
+                if (stage < 3) _feedback.Text = MissionContent.WritingFeedback(MissionValidator.DescribeDifference(_answerBox.Text, analysis.MatchedAcceptedAnswer));
+                else { _writingAnswerRevealed = true; _feedback.Text = MissionContent.WritingAnswerRevealed(analysis.MatchedAcceptedAnswer); }
+                _answerBox.SelectAll();
+                var spellingPayload = TelemetryPayload(); spellingPayload["reason"] = "orthographic_error";
+                _logger.Log("MissionFailed", spellingPayload);
+                var hintPayload = TelemetryPayload(); hintPayload["writing_hint_stage"] = stage;
+                _logger.Log("MissionWritingHintShown", hintPayload);
+                _attempt++;
+                return;
+            }
+
             if (result == MissionAnswerResult.Wrong)
             {
-                _feedback.Text = "Todav\u00eda no. Prob\u00e1 de nuevo.";
+                _feedbackIcon.Visibility = Visibility.Collapsed;
+                _feedback.Text = "";
+                _routine.Visibility = Visibility.Visible;
+                _hasNonOrthographicFailure = true;
+                if (_maxHelpLevelUsed == 1) ShowHelp(2, false);
+                else if (_maxHelpLevelUsed == 2) ShowHelp(3, false);
+                else UpdateHelpButton();
                 _answerBox.SelectAll();
-                var failedPayload = MissionTelemetry.Payload(_mission, _attempt);
+                var failedPayload = TelemetryPayload();
                 failedPayload["reason"] = "wrong_answer";
                 _logger.Log("MissionFailed", failedPayload);
                 _attempt++;
                 return;
             }
 
-            _logger.Log("MissionSolved", MissionTelemetry.Payload(_mission, _attempt));
+            _logger.Log("MissionSolved", TelemetryPayload());
 
             if (!_canExit)
             {
                 _canExit = true;
                 _exitButton.Visibility = Visibility.Visible;
-                _logger.Log("ExitAvailable", MissionTelemetry.Payload(_mission, _attempt));
+                _logger.Log("ExitAvailable", TelemetryPayload());
             }
             RequestUnlock();
         }
+
+        private Dictionary<string, object> TelemetryPayload() { return MissionTelemetry.Payload(_mission, _attempt, _maxHelpLevelUsed, _helpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed); }
+
+        private void RequestNextHelp()
+        {
+            var next = 1;
+            if (!_hasNonOrthographicFailure || _maxHelpLevelUsed != 0) return;
+            ShowHelp(next, true);
+        }
+
+        private void ShowHelp(int next, bool requestedByUser)
+        {
+            MissionHelpStep step = null;
+            if (_mission.HelpSteps != null) foreach (var candidate in _mission.HelpSteps) if (candidate.HelpLevel == next) { step = candidate; break; }
+            if (step == null) return;
+            var text = new TextBlock { Text = step.Text, Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(7, 4, 0, 4), MaxWidth = 560 };
+            var helpRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
+            helpRow.Children.Add(CreateIcon(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", 28));
+            helpRow.Children.Add(text);
+            _helpPanel.Children.Add(helpRow);
+            _maxHelpLevelUsed = next; if (requestedByUser) _helpRequestsCount++;
+            var payload = TelemetryPayload(); payload["help_level"] = next;
+            _logger.Log("MissionHelpRequested", payload);
+            UpdateHelpButton();
+        }
+
+        private void UpdateHelpButton()
+        {
+            if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || !_hasNonOrthographicFailure || _maxHelpLevelUsed != 0) { _helpButton.Visibility = Visibility.Collapsed; return; }
+            _helpButton.Content = CreateIconButtonContent("rephrase.png", MissionContent.RephraseButton);
+            _helpButton.Visibility = Visibility.Visible;
+        }
+
+        private static StackPanel CreateIconButtonContent(string iconName, string label)
+        {
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            var image = CreateIcon(iconName, 28); image.Margin = new Thickness(0, 0, 8, 0); panel.Children.Add(image);
+            panel.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+            return panel;
+        }
+
+        private static StackPanel CreateRoutinePanel()
+        {
+            var panel = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 4, 0, 10) };
+            var steps = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0) };
+            AddRoutineStep(steps, "look.png", "MIRO"); AddRoutineStep(steps, "think.png", "PIENSO"); AddRoutineStep(steps, "write.png", "RESPONDO"); panel.Children.Add(steps);
+            return panel;
+        }
+
+        private static void AddRoutineStep(StackPanel panel, string iconName, string label)
+        {
+            if (panel.Children.Count > 0) panel.Children.Add(new TextBlock { Text = "  →  ", VerticalAlignment = VerticalAlignment.Center, Foreground = new SolidColorBrush(Color.FromRgb(75, 85, 99)) });
+            panel.Children.Add(CreateIcon(iconName, 32)); panel.Children.Add(new TextBlock { Text = " " + label, VerticalAlignment = VerticalAlignment.Center, Foreground = new SolidColorBrush(Color.FromRgb(55, 65, 81)), FontSize = 16 });
+        }
+
+        private static Image CreateIcon(string iconName, double size)
+        {
+            var image = new Image { Width = size, Height = size, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center };
+            try
+            {
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Guardian.Assets.Icons." + iconName))
+                {
+                    if (stream == null) return image;
+                    var source = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    image.Source = source.Frames[0];
+                }
+            }
+            catch { }
+            return image;
+        }
+
+        private static string PrefixHint(string value) { if (string.IsNullOrWhiteSpace(value)) return "la palabra"; var count = value.Length >= 4 ? 3 : 1; return value.Substring(0, count); }
+
 
         private void RequestUnlock()
         {
@@ -2289,21 +2491,67 @@ namespace Guardian
     {
         Invalid,
         Wrong,
+        OrthographicNearMatch,
         Correct
     }
+
+    public enum WritingDifference { Unknown, ExtraLetter, MissingLetter, TransposedLetters, SubstitutedLetter }
+
+    public sealed class MissionAnswerAnalysis { public MissionAnswerResult Result { get; set; } public string MatchedAcceptedAnswer { get; set; } public int EditDistance { get; set; } }
 
     public static class MissionValidator
     {
         public static MissionAnswerResult Validate(string input, Mission mission)
         {
-            if (string.IsNullOrWhiteSpace(input) || mission == null || mission.AcceptedAnswers == null) return MissionAnswerResult.Invalid;
+            return Analyze(input, mission).Result;
+        }
+        public static MissionAnswerAnalysis Analyze(string input, Mission mission)
+        {
+            var analysis = new MissionAnswerAnalysis { Result = MissionAnswerResult.Invalid };
+            if (string.IsNullOrWhiteSpace(input) || mission == null || mission.AcceptedAnswers == null) return analysis;
             var normalized = MissionText.Normalize(input);
             foreach (var answer in mission.AcceptedAnswers)
             {
-                if (normalized == MissionText.Normalize(answer)) return MissionAnswerResult.Correct;
+                if (normalized == MissionText.Normalize(answer)) { analysis.Result = MissionAnswerResult.Correct; return analysis; }
             }
-            return MissionAnswerResult.Wrong;
+            var best = Int32.MaxValue; string accepted = null; bool ambiguous = false;
+            foreach (var answer in mission.AcceptedAnswers)
+            {
+                var expected = MissionText.Normalize(answer);
+                if (expected.Length < 4 || !IsText(expected) || !IsText(normalized)) continue;
+                var distance = DamerauLevenshtein(normalized, expected); var limit = expected.Length <= 5 ? 1 : 2;
+                if (distance > limit || (expected.Length >= 6 && ((double)distance / expected.Length) > 0.30)) continue;
+                if (distance < best) { best = distance; accepted = answer; ambiguous = false; } else if (distance == best && MissionText.Normalize(answer) != MissionText.Normalize(accepted)) ambiguous = true;
+            }
+            if (accepted != null && !ambiguous) { analysis.Result=MissionAnswerResult.OrthographicNearMatch; analysis.MatchedAcceptedAnswer=accepted; analysis.EditDistance=best; return analysis; }
+            analysis.Result = MissionAnswerResult.Wrong; return analysis;
         }
+
+        public static WritingDifference DescribeDifference(string input, string expected)
+        {
+            var actual = MissionText.Normalize(input); var target = MissionText.Normalize(expected);
+            if (actual.Length == target.Length + 1 && IsSingleInsertion(target, actual)) return WritingDifference.ExtraLetter;
+            if (target.Length == actual.Length + 1 && IsSingleInsertion(actual, target)) return WritingDifference.MissingLetter;
+            if (actual.Length == target.Length)
+            {
+                var first = -1; var second = -1;
+                for (var i = 0; i < actual.Length; i++) if (actual[i] != target[i]) { if (first < 0) first = i; else if (second < 0) second = i; else return WritingDifference.Unknown; }
+                if (first >= 0 && second == first + 1 && actual[first] == target[second] && actual[second] == target[first]) return WritingDifference.TransposedLetters;
+                if (first >= 0 && second < 0) return WritingDifference.SubstitutedLetter;
+            }
+            return WritingDifference.Unknown;
+        }
+
+        private static bool IsSingleInsertion(string shorter, string longer)
+        {
+            var left = 0; while (left < shorter.Length && shorter[left] == longer[left]) left++;
+            var shortIndex = left; var longIndex = left + 1;
+            while (shortIndex < shorter.Length && shorter[shortIndex] == longer[longIndex]) { shortIndex++; longIndex++; }
+            return shortIndex == shorter.Length;
+        }
+
+        private static bool IsText(string text) { foreach (var c in text) if (!char.IsLetter(c) && c != ' ') return false; return text.Length > 0; }
+        internal static int DamerauLevenshtein(string left, string right) { var d = new int[left.Length + 1, right.Length + 1]; for (var i=0;i<=left.Length;i++) d[i,0]=i; for (var j=0;j<=right.Length;j++) d[0,j]=j; for (var i=1;i<=left.Length;i++) for (var j=1;j<=right.Length;j++) { var cost=left[i-1]==right[j-1]?0:1; d[i,j]=Math.Min(Math.Min(d[i-1,j]+1,d[i,j-1]+1),d[i-1,j-1]+cost); if(i>1&&j>1&&left[i-1]==right[j-2]&&left[i-2]==right[j-1]) d[i,j]=Math.Min(d[i,j],d[i-2,j-2]+cost); } return d[left.Length,right.Length]; }
 
         public static MissionAnswerResult Validate(string input, int expected, out int answer)
         {
@@ -2776,12 +3024,9 @@ namespace Guardian
         {
             try
             {
-                var exePath = Assembly.GetExecutingAssembly().Location;
-                using (var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, true))
-                {
-                    if (key == null) throw new InvalidOperationException("HKCU Run key no disponible.");
-                    key.SetValue(ValueName, Quote(exePath) + " --minimized");
-                }
+                CanonicalInstallation.EnsureCurrentBuild();
+                var registration = EnsureCanonicalRegistration(true);
+                if (registration.Result.StartsWith("repair_failed:", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException(registration.Result);
                 error = "";
                 return true;
             }
@@ -2818,10 +3063,52 @@ namespace Guardian
             }
         }
 
+        public static StartupRegistrationResult EnsureCanonicalRegistration(bool enabled)
+        {
+            var result = new StartupRegistrationResult { Result = enabled ? "already_canonical" : "disabled" };
+            try
+            {
+                using (var key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
+                {
+                    var current = key.GetValue(ValueName) as string ?? "";
+                    result.ConfiguredCommand = current;
+                    var expected = ExpectedCommand();
+                    if (!enabled) return result;
+                    if (!string.Equals(current, expected, StringComparison.OrdinalIgnoreCase))
+                    {
+                        key.SetValue(ValueName, expected, RegistryValueKind.String);
+                        result.Result = string.IsNullOrWhiteSpace(current) ? "created_canonical" : "repaired_to_canonical";
+                        result.ConfiguredCommand = expected;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Result = "repair_failed:" + ex.GetType().Name;
+            }
+            return result;
+        }
+
         private static string Quote(string value)
         {
             return "\"" + value.Replace("\"", "\\\"") + "\"";
         }
+
+        private static string ExpectedCommand()
+        {
+            var command = Quote(GuardianInstallPaths.GuardianExecutablePath) + " --minimized";
+            if (GuardianInstallPaths.HasExplicitHome)
+            {
+                command += " --home " + Quote(GuardianInstallPaths.InstallDirectory);
+            }
+            return command;
+        }
+    }
+
+    public sealed class StartupRegistrationResult
+    {
+        public string ConfiguredCommand { get; set; }
+        public string Result { get; set; }
     }
 
     public static class Watchdog
@@ -2830,7 +3117,7 @@ namespace Guardian
         {
             try
             {
-                var exe = Assembly.GetExecutingAssembly().Location;
+                var exe = GuardianInstallPaths.GuardianExecutablePath;
                 var args = "--watchdog " + Process.GetCurrentProcess().Id + " " + Quote(exe);
                 var psi = new ProcessStartInfo(exe, args)
                 {
@@ -2953,6 +3240,15 @@ namespace Guardian
             }
             return false;
         }
+
+        public string Value(string name)
+        {
+            for (var i = 0; i < Values.Count - 1; i++)
+            {
+                if (string.Equals(Values[i], name, StringComparison.OrdinalIgnoreCase)) return Values[i + 1];
+            }
+            return "";
+        }
     }
 
     public static class SelfTest
@@ -2993,6 +3289,32 @@ namespace Guardian
             if (MissionValidator.Validate("abc", 12, out answer) != MissionAnswerResult.Invalid) failures.Add("text answer should be invalid");
             if (MissionValidator.Validate("11", 12, out answer) != MissionAnswerResult.Wrong) failures.Add("wrong answer should be wrong");
             if (MissionValidator.Validate("12", 12, out answer) != MissionAnswerResult.Correct) failures.Add("correct answer should be correct");
+            var autumn = new Mission { AcceptedAnswers = new List<string> { "otoño" } };
+            var surname = new Mission { AcceptedAnswers = new List<string> { "Pereira" } };
+            var season = new Mission { AcceptedAnswers = new List<string> { "invierno" } };
+            var number = new Mission { AcceptedAnswers = new List<string> { "7" } };
+            if (MissionValidator.Validate("otño", autumn) != MissionAnswerResult.OrthographicNearMatch) failures.Add("missing-letter autumn should be spelling near match");
+            if (MissionValidator.Validate("OTONO", autumn) != MissionAnswerResult.Correct) failures.Add("accent normalization should remain correct");
+            if (MissionValidator.Validate("Pereir", surname) != MissionAnswerResult.OrthographicNearMatch) failures.Add("sample surname should be spelling near match");
+            if (MissionValidator.Validate("Bauti", surname) != MissionAnswerResult.Wrong) failures.Add("distant text must be wrong");
+            if (MissionValidator.Validate("verano", season) != MissionAnswerResult.Wrong) failures.Add("semantic season mismatch must be wrong");
+            if (MissionValidator.Validate("8", number) != MissionAnswerResult.Wrong) failures.Add("numbers must not use spelling flow");
+            if (MissionValidator.DescribeDifference("veranno", "verano") != WritingDifference.ExtraLetter) failures.Add("extra letter diagnosis failed");
+            if (MissionValidator.DescribeDifference("otño", "otoño") != WritingDifference.MissingLetter) failures.Add("missing letter diagnosis failed");
+            if (MissionValidator.DescribeDifference("vernao", "verano") != WritingDifference.TransposedLetters) failures.Add("transposition diagnosis failed");
+            if (MissionValidator.DescribeDifference("vereno", "verano") != WritingDifference.SubstitutedLetter) failures.Add("substitution diagnosis failed");
+            if (MissionValidator.DescribeDifference("Bauti", "Pereira") != WritingDifference.Unknown) failures.Add("ambiguous diagnosis must stay unknown");
+            if (MissionContent.WritingFeedback(WritingDifference.ExtraLetter) != "Parece que hay una letra de más. Leé cómo lo escribiste.") failures.Add("extra letter writing text changed");
+            if (MissionContent.WritingFeedback(WritingDifference.MissingLetter) != "Parece que falta una letra. Leé cómo lo escribiste.") failures.Add("missing letter writing text changed");
+            if (MissionContent.WritingFeedback(WritingDifference.TransposedLetters) != "Parece que dos letras están en otro orden. Leé cómo lo escribiste.") failures.Add("transposed letters writing text changed");
+            if (MissionContent.WritingFeedback(WritingDifference.SubstitutedLetter) != "Parece que hay una letra que no va. Leé cómo lo escribiste.") failures.Add("substituted letter writing text changed");
+            if (MissionContent.WritingFeedback(WritingDifference.Unknown) != "Leé cómo lo escribiste.") failures.Add("fallback writing text changed");
+            var resources = new HashSet<string>(Assembly.GetExecutingAssembly().GetManifestResourceNames());
+            foreach (var icon in new[] { "look.png", "think.png", "write.png", "rephrase.png", "hint.png", "guided.png", "spelling.png" })
+            {
+                if (!resources.Contains("Guardian.Assets.Icons." + icon)) failures.Add("embedded icon missing: " + icon);
+            }
+            if (MissionContent.WritingAnswerRevealed("verano").IndexOf("verano", StringComparison.Ordinal) < 0) failures.Add("revealed writing feedback missing answer");
         }
 
         private static void CheckAdminAuth(List<string> failures)
@@ -3055,6 +3377,9 @@ namespace Guardian
                 GuardianClock.LocalNowProvider = delegate { return new DateTime(2026, 8, 22, 10, 0, 0); };
                 var config = GuardianConfig.Default();
                 config.MissionConfig.EnabledSkills = new List<string> { "math.basic_operations_1.subtraction", "comprehension.functional_1.current_date", "comprehension.functional_1.calendar" };
+                var remoteMissionConfig = new MissionConfig { EnabledSkills = new List<string> { "comprehension.functional_1.identity" }, PrivateProfile = new PrivateMissionProfile { FirstName = "Ana" } };
+                if (!MissionConfigComparer.NeedsApply(config.MissionConfig, remoteMissionConfig)) failures.Add("same-version remote mission configuration must reapply when local skills are stale");
+                if (MissionConfigComparer.NeedsApply(remoteMissionConfig, remoteMissionConfig)) failures.Add("matching mission configuration should not reapply repeatedly");
                 var selector = new MissionSelector(config, new MissionCatalog());
                 var seen = new HashSet<string>();
                 for (var i = 0; i < 3; i++) seen.Add(selector.Next().SkillId);
@@ -3067,8 +3392,66 @@ namespace Guardian
                 if (age == null) failures.Add("birth profile should generate mission");
                 var date = new MissionCatalog().Generate("comprehension.functional_1.current_date", profile, new Dictionary<string, string>(), new Random(1));
                 if (date == null) failures.Add("current date mission missing");
+                var vocabulary = new MissionCatalog().Generate("comprehension.functional_1.instruction_vocabulary", new PrivateMissionProfile(), new Dictionary<string, string>(), new Random(1));
+                if (vocabulary == null || vocabulary.HelpSteps == null || vocabulary.HelpSteps.Count != 3) failures.Add("instruction vocabulary should generate three help levels without profile");
+                var ageVariants = new HashSet<string>();
+                for (var i = 0; i < 80; i++) { var generated = new MissionCatalog().Generate("comprehension.functional_1.age_birth", profile, new Dictionary<string, string>(), new Random(i)); ageVariants.Add(generated.VariantId); if (generated.HelpSteps == null || generated.HelpSteps.Count != 3) failures.Add("comprehension mission missing progressive help"); }
+                if (!ageVariants.Contains("birth_date_ask") || !ageVariants.Contains("birthday_ask")) failures.Add("birth date and birthday variants must remain distinct");
+                var temporalVariants = GeneratedVariants("comprehension.functional_1.temporal_relations", profile);
+                if (temporalVariants.Contains("next_month_ask_2")) failures.Add("removed next month variant must not be selectable");
+                if (!temporalVariants.Contains("next_month_ask_1") || !temporalVariants.Contains("previous_month")) failures.Add("remaining temporal month variants missing");
+                var vocabularyVariants = GeneratedVariants("comprehension.functional_1.instruction_vocabulary", new PrivateMissionProfile());
+                if (!vocabularyVariants.Contains("vocab_before") || !vocabularyVariants.Contains("vocab_after")) failures.Add("before and after vocabulary variants must remain selectable");
+                var tomorrow = FindVariant("comprehension.functional_1.temporal_relations", profile, "tomorrow_weekday");
+                var yesterday = FindVariant("comprehension.functional_1.temporal_relations", profile, "yesterday_weekday");
+                var nextMonth = FindVariant("comprehension.functional_1.temporal_relations", profile, "next_month_ask_1");
+                var previousMonth = FindVariant("comprehension.functional_1.temporal_relations", profile, "previous_month");
+                if (tomorrow == null || tomorrow.HelpSteps[2].Text != "Hoy es sábado. ¿Qué día viene después?") failures.Add("tomorrow weekday help must resolve the current weekday");
+                if (yesterday == null || yesterday.HelpSteps[2].Text != "Hoy es sábado. ¿Qué día fue ayer?") failures.Add("yesterday weekday help must resolve the current weekday");
+                if (nextMonth == null || nextMonth.HelpSteps[2].Text != "Ahora estamos en agosto. ¿Qué mes viene después?") failures.Add("next month help must resolve the current month");
+                if (previousMonth == null || previousMonth.HelpSteps[2].Text != "Ahora estamos en agosto. ¿Qué mes estuvo antes?") failures.Add("previous month help must resolve the current month");
+                var nameFieldWithNickname = FindVariant("comprehension.functional_1.identity", profile, "identity_name_field");
+                if (nameFieldWithNickname == null || nameFieldWithNickname.HelpSteps[2].Text != "Tu apodo es Tomi. Acá te están preguntando tu nombre.") failures.Add("name field must resolve configured nickname");
+                var profileWithoutNickname = new PrivateMissionProfile { FirstName = "Ana", MiddleName = "María", LastName = "Gómez", BirthDate = "2010-08-23" };
+                var nameFieldFallback = FindVariant("comprehension.functional_1.identity", profileWithoutNickname, "identity_name_field");
+                if (nameFieldFallback == null || nameFieldFallback.HelpSteps[2].Text != "Pensá en el nombre que figura como tu nombre.") failures.Add("name field must use the nickname fallback");
+                var nameLast = FindVariant("comprehension.functional_1.identity", profileWithoutNickname, "identity_name_last_name_ask");
+                var fullName = FindVariant("comprehension.functional_1.identity", profileWithoutNickname, "identity_full_name_ask");
+                if (nameLast == null || MissionValidator.Validate("Ana Gómez", nameLast) != MissionAnswerResult.Correct || MissionValidator.Validate("Ana María Gómez", nameLast) != MissionAnswerResult.Correct) failures.Add("name and last name must accept first plus last or full name");
+                if (fullName == null || MissionValidator.Validate("Ana Gómez", fullName) != MissionAnswerResult.Wrong || MissionValidator.Validate("Ana María Gómez", fullName) != MissionAnswerResult.Correct) failures.Add("full name must continue requiring the configured full name");
+                var skills = new[] { "comprehension.functional_1.identity", "comprehension.functional_1.age_birth", "comprehension.functional_1.current_date", "comprehension.functional_1.temporal_relations", "comprehension.functional_1.calendar", "comprehension.functional_1.seasons", "comprehension.functional_1.instruction_vocabulary" };
+                var observedVariants = new HashSet<string>();
+                foreach (var skill in skills) observedVariants.UnionWith(GeneratedVariants(skill, profile));
+                var expectedVariants = new HashSet<string> { "identity_name_ask_1", "identity_name_ask_2", "identity_name_field", "identity_last_name_ask", "identity_last_name_field", "identity_name_last_name_ask", "identity_name_last_name_field", "identity_full_name_ask", "age_ask_1", "age_ask_2", "age_field", "birth_year_ask", "birth_year_field", "birthday_ask", "birth_date_ask", "current_year_ask_1", "current_year_ask_2", "current_month_ask_1", "current_month_ask_2", "current_weekday", "current_day_of_month", "current_full_date", "tomorrow_weekday", "yesterday_weekday", "next_month_ask_1", "previous_month", "days_in_week", "months_in_year", "weekday_after", "weekday_before", "month_after", "month_before", "season_cold", "season_hot", "season_falling_leaves", "season_flowers", "season_after", "vocab_how_many", "vocab_quantity", "vocab_before", "vocab_after", "vocab_next", "vocab_previous", "vocab_first", "vocab_last" };
+                if (!observedVariants.SetEquals(expectedVariants)) failures.Add("comprehension catalog variants differ from the expected final catalog");
+                foreach (var skill in skills) for (var i = 0; i < 120; i++)
+                {
+                    var generated = new MissionCatalog().Generate(skill, profile, new Dictionary<string, string>(), new Random(i));
+                    if (generated == null || generated.HelpSteps == null || generated.HelpSteps.Count != 3) { failures.Add("every remaining comprehension variant must have three helps"); break; }
+                    if (generated.Prompt.IndexOf("{", StringComparison.Ordinal) >= 0 || generated.Prompt.IndexOf("**", StringComparison.Ordinal) >= 0) { failures.Add("prompt must not expose placeholders or markdown"); break; }
+                    foreach (var step in generated.HelpSteps) if (step.Text.IndexOf("{", StringComparison.Ordinal) >= 0 || step.Text.IndexOf("**", StringComparison.Ordinal) >= 0) { failures.Add("help must not expose placeholders or markdown"); break; }
+                }
+                var telemetry = MissionTelemetry.Payload(vocabulary, 2, 2, 2, true, 1, false);
+                if (!telemetry.ContainsKey("skill_level_id") || !telemetry.ContainsKey("max_help_level") || telemetry.ContainsKey("input") || telemetry.ContainsKey("accepted_answer")) failures.Add("mission telemetry help fields or privacy boundary failed");
             }
             finally { GuardianClock.LocalNowProvider = originalClock; }
+        }
+
+        private static HashSet<string> GeneratedVariants(string skill, PrivateMissionProfile profile)
+        {
+            var result = new HashSet<string>();
+            for (var i = 0; i < 160; i++) result.Add(new MissionCatalog().Generate(skill, profile, new Dictionary<string, string>(), new Random(i)).VariantId);
+            return result;
+        }
+
+        private static Mission FindVariant(string skill, PrivateMissionProfile profile, string variantId)
+        {
+            for (var i = 0; i < 400; i++)
+            {
+                var mission = new MissionCatalog().Generate(skill, profile, new Dictionary<string, string>(), new Random(i));
+                if (mission != null && mission.VariantId == variantId) return mission;
+            }
+            return null;
         }
 
         private static void CheckMissionUnavailableDeduplication(List<string> failures)

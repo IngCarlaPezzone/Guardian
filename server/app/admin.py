@@ -31,6 +31,7 @@ MISSION_LEVELS = [
     ("comprehension", "functional_1", "Comprensión funcional", "Preguntas cotidianas sobre identidad, edad, fechas, calendario y estaciones.", [
         ("comprehension.functional_1.identity", "Identidad", "Comprender distintas formas de solicitar información básica de identificación."),
         ("comprehension.functional_1.age_birth", "Edad y nacimiento", "Reconocer preguntas sobre edad, nacimiento y cumpleaños."),
+        ("comprehension.functional_1.instruction_vocabulary", "Vocabulario de consignas", "Comprender palabras frecuentes como cuántos, antes, después, anterior, siguiente, primero y último."),
         ("comprehension.functional_1.current_date", "Fecha actual", "Diferenciar día, mes, año y fecha actual."),
         ("comprehension.functional_1.temporal_relations", "Relaciones temporales", "Comprender referencias como ayer, mañana, mes anterior y mes siguiente."),
         ("comprehension.functional_1.calendar", "Calendario", "Reconocer días, meses y su secuencia."),
@@ -53,7 +54,7 @@ def is_device_online(device: Device) -> bool:
 
 
 EVENT_GROUPS = {
-    "missions": ["MissionStarted", "MissionFailed", "MissionSolved"],
+    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFailed", "MissionSolved"],
     "config": ["RemoteConfigFetched", "RemoteConfigReceived", "RemoteConfigApplied", "RemoteConfigFailed"],
     "updates": [
         "UpdateCommandReceived",

@@ -5,6 +5,7 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
+using GuardianShared;
 
 namespace GuardianInstaller
 {
@@ -12,9 +13,9 @@ namespace GuardianInstaller
     {
         private const string Version = "0.2.0";
         private const string AppName = "Guardian";
-        private static readonly string AppDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Guardian");
-        private static readonly string GuardianExe = Path.Combine(AppDir, "Guardian.exe");
-        private static readonly string UpdaterExe = Path.Combine(AppDir, "GuardianUpdater.exe");
+        private static readonly string AppDir = GuardianInstallPaths.InstallDirectory;
+        private static readonly string GuardianExe = GuardianInstallPaths.GuardianExecutablePath;
+        private static readonly string UpdaterExe = GuardianInstallPaths.UpdaterExecutablePath;
         private static readonly string SetupExe = Path.Combine(AppDir, "GuardianSetup.exe");
         private static readonly string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private static readonly string UninstallKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Guardian";

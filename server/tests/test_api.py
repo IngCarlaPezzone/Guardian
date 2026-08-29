@@ -436,6 +436,23 @@ def test_admin_activity_filters_device_events():
     assert "Hora local" in response.text
 
 
+def test_admin_activity_includes_progressive_help_events_without_schema_change():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000a103"
+    payload = {"mission_id": "sample-mission", "skill_level_id": "functional_1", "skill_id": "instruction_vocabulary", "variant_id": "vocab_before", "attempt": 2, "max_help_level": 2, "help_requests_count": 2, "writing_correction_count": 0}
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Help-Activity-PC", token_hash=hash_secret("help-activity-token"), client_version="0.4.3-staging-comprehension-help", last_seen_at=utcnow()))
+        db.add(DeviceEvent(event_id="33333333-3333-4333-8333-333333333333", device_id=device_id, occurred_at=utcnow(), received_at=utcnow(), event_type="MissionHelpRequested", client_version="0.4.3-staging-comprehension-help", payload={**payload, "help_level": 2}))
+        db.add(DeviceEvent(event_id="44444444-4444-4444-8444-444444444444", device_id=device_id, occurred_at=utcnow(), received_at=utcnow(), event_type="MissionWritingHintShown", client_version="0.4.3-staging-comprehension-help", payload={**payload, "writing_hint_stage": 1, "had_orthographic_error": True, "writing_answer_revealed": False}))
+        db.commit()
+
+    response = client.get(f"/admin/devices/{device_id}/activity?period=all&group=missions")
+    assert response.status_code == 200
+    assert "MissionHelpRequested" in response.text
+    assert "MissionWritingHintShown" in response.text
+    assert "&quot;input&quot;" not in response.text
+
+
 def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-00000000abc1"
@@ -449,10 +466,12 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     assert page.status_code == 200
     assert "Comprensión funcional" in page.text
     assert "data-tooltip" in page.text
+    assert "Vocabulario de consignas" in page.text
+    assert "aria-label" in page.text
 
     response = client.post(f"/admin/devices/{device_id}/config", data={
         "display_name": "Mission Test", "interval_minutes": "15", "missions_submitted": "1",
-        "enabled_skills": ["math.basic_operations_1.subtraction", "comprehension.functional_1.identity"],
+        "enabled_skills": ["math.basic_operations_1.subtraction", "comprehension.functional_1.identity", "comprehension.functional_1.instruction_vocabulary"],
         "preferred_name": "Tomi", "first_name": "Tomás", "middle_name": "", "last_name": "Pérez", "birth_date": "2010-08-23",
     }, follow_redirects=False)
     assert response.status_code == 303
@@ -460,7 +479,7 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     headers = {"Authorization": f"Bearer {token}"}
     remote = client.get(f"/api/v1/devices/{device_id}/config", headers=headers)
     assert remote.status_code == 200
-    assert remote.json()["mission_config"]["EnabledSkills"] == ["math.basic_operations_1.subtraction", "comprehension.functional_1.identity"]
+    assert remote.json()["mission_config"]["EnabledSkills"] == ["math.basic_operations_1.subtraction", "comprehension.functional_1.identity", "comprehension.functional_1.instruction_vocabulary"]
     assert remote.json()["mission_config"]["PrivateProfile"]["FirstName"] == "Tomás"
 
     with SessionLocal() as db:

@@ -16,8 +16,11 @@ Guardian escribe eventos locales en JSON Lines y, desde Etapa 1, sincroniza una 
   "clientVersion": "0.3.1",
   "payload": {
     "missionId": "c84750c2086d494aadb93318dff4eb7b",
-    "prompt": "7 x 12 = ?",
-    "elapsedSeconds": 900
+    "category_id": "math",
+    "skill_level_id": "basic_operations_1",
+    "skill_id": "addition",
+    "variant_id": "generated",
+    "attempt": 1
   }
 }
 ```
@@ -30,6 +33,8 @@ Guardian escribe eventos locales en JSON Lines y, desde Etapa 1, sincroniza una 
 - `UsageCounterStarted`
 - `UsageCounterPaused`
 - `MissionStarted`
+- `MissionHelpRequested`
+- `MissionWritingHintShown`
 - `MissionFailed`
 - `MissionSolved`
 - `DeviceLocked`
@@ -75,6 +80,15 @@ El servidor deduplica por `event_id`. El cliente elimina de pendientes solo los 
 Desde `0.3.1`, el acceso local a `events-pending.jsonl` usa locking interproceso y los errores de telemetria no deben cerrar Guardian.
 
 Desde `0.4.0`, los eventos de misión nuevos incluyen `mission_id`, `category_id`, `level_id`, `skill_id`, `variant_id` y `attempt`. Las respuestas ingresadas y los valores del perfil privado no se registran en `events.jsonl`, `events-pending.jsonl` ni se envían al servidor.
+
+Desde `0.4.3-staging-comprehension-help`, los eventos de misión incluyen además `skill_level_id` (nivel pedagógico), `max_help_level`, `help_requests_count`, `had_orthographic_error`, `writing_correction_count` y `writing_answer_revealed`.
+
+- `max_help_level` es el mayor nivel de ayuda realmente mostrado; no aumenta por errores ortográficos.
+- `help_requests_count` cuenta las ayudas solicitadas explícitamente por la persona usuaria.
+- `MissionHelpRequested` añade `help_level` al mostrarse una ayuda, sea solicitada (nivel 1) o mostrada automáticamente tras un error no ortográfico posterior (niveles 2 y 3).
+- `MissionWritingHintShown` añade `writing_hint_stage` (`1`, `2` o `3`) cuando se muestra feedback ortográfico o se revela la forma correcta.
+
+Estos payloads nunca incluyen el input, la respuesta aceptada, el texto de la consigna o de ayuda, prefijos ni datos del perfil privado.
 
 ## Configuracion Remota
 
