@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.4-staging-remote-config
+
+- Corrige la aplicación de RemoteConfig cuando el cliente conserva la misma versión pero sus habilidades o perfil locales no coinciden con el servidor.
+- Validada en STG con una configuración que habilita sólo Comprensión: tras reiniciar, Guardian genera Comprensión y no Matemática.
+
 ## 0.4.3
 
 - Validada manualmente en STG con la prerelease `0.4.3-staging-comprehension-help.6` y la RC `0.4.3-rc.3`, e integrada en `main`. La release `0.4.3` está registrada en PROD; queda pendiente la validación obligatoria en PC TEST antes de cualquier dispositivo productivo final.

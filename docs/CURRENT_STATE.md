@@ -93,6 +93,12 @@ La validación confirmó el flujo de las ayudas y los textos dinámicos locales.
 
 La release `0.4.3` está registrada en PROD, pero todavía no se envió a ningún dispositivo. El siguiente paso obligatorio es actualizar y validar la PC TEST contra PROD; sólo después podrá considerarse el dispositivo productivo final.
 
+## Corrección de RemoteConfig en STG
+
+La build `0.4.4-staging-remote-config.1` validó en STG que, si la configuración local de misiones está desactualizada pero su versión remota coincide, Guardian vuelve a aplicar habilidades y perfil desde el servidor. Con una única skill de Comprensión habilitada, la misión posterior fue de Comprensión y no de Matemática.
+
+La corrección está en `feature/remote-config-reapply` y todavía no fue integrada ni publicada en PROD.
+
 ## Versionado y promoción
 
 La base estable actual del repositorio es `0.4.2`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
