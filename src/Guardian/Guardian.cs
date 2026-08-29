@@ -2408,9 +2408,16 @@ namespace Guardian
         private static Image CreateIcon(string iconName, double size)
         {
             var image = new Image { Width = size, Height = size, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center };
-            var assetPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Assets", "Icons", iconName);
-            if (!File.Exists(assetPath)) return image;
-            var source = new BitmapImage(); source.BeginInit(); source.UriSource = new Uri(assetPath, UriKind.Absolute); source.CacheOption = BitmapCacheOption.OnLoad; source.EndInit(); image.Source = source;
+            try
+            {
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Guardian.Assets.Icons." + iconName))
+                {
+                    if (stream == null) return image;
+                    var source = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    image.Source = source.Frames[0];
+                }
+            }
+            catch { }
             return image;
         }
 
@@ -3300,6 +3307,11 @@ namespace Guardian
             if (MissionContent.WritingFeedback(WritingDifference.TransposedLetters) != "Parece que dos letras están en otro orden. Leé cómo lo escribiste.") failures.Add("transposed letters writing text changed");
             if (MissionContent.WritingFeedback(WritingDifference.SubstitutedLetter) != "Parece que hay una letra que no va. Leé cómo lo escribiste.") failures.Add("substituted letter writing text changed");
             if (MissionContent.WritingFeedback(WritingDifference.Unknown) != "Leé cómo lo escribiste.") failures.Add("fallback writing text changed");
+            var resources = new HashSet<string>(Assembly.GetExecutingAssembly().GetManifestResourceNames());
+            foreach (var icon in new[] { "look.png", "think.png", "write.png", "rephrase.png", "hint.png", "guided.png", "spelling.png" })
+            {
+                if (!resources.Contains("Guardian.Assets.Icons." + icon)) failures.Add("embedded icon missing: " + icon);
+            }
             if (MissionContent.WritingAnswerRevealed("verano").IndexOf("verano", StringComparison.Ordinal) < 0) failures.Add("revealed writing feedback missing answer");
         }
 

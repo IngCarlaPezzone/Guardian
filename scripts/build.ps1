@@ -7,6 +7,7 @@ $src = Join-Path $root "src\Guardian\Guardian.cs"
 $missionSrc = Join-Path $root "src\Guardian\MissionSystem.cs"
 $missionContentSrc = Join-Path $root "src\Guardian\MissionContent.cs"
 $installPathsSrc = Join-Path $root "src\Guardian\GuardianInstallPaths.cs"
+$iconResources = @(Get-ChildItem (Join-Path $root "src\Guardian\Assets\Icons") -Filter "*.png" | ForEach-Object { "/resource:$($_.FullName),Guardian.Assets.Icons.$($_.Name)" })
 $updaterSrc = Join-Path $root "updater\src\GuardianUpdater.cs"
 $outDir = Join-Path $root "dist"
 $objDir = Join-Path $root "obj"
@@ -52,7 +53,8 @@ Set-Content -Encoding UTF8 -Path $updaterVersionSrc -Value "namespace GuardianUp
   $missionSrc `
   $missionContentSrc `
   $installPathsSrc `
-  $guardianVersionSrc
+  $guardianVersionSrc `
+  $iconResources
 
 if ($LASTEXITCODE -ne 0) {
   throw "Build fallo con codigo $LASTEXITCODE"
