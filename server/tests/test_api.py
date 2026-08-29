@@ -542,6 +542,49 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
         assert profile.birth_date == "2010-08-23"
 
 
+def test_configuration_update_controls_are_stable_and_reuse_update_command_flow():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc8"
+    with SessionLocal() as db:
+        device = Device(id=device_id, machine_name="Configuration-Update-PC", token_hash=hash_secret("configuration-update-token"), client_version="0.4.4", last_seen_at=utcnow())
+        db.add(device)
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=1))
+        previous_active = [(release.id, release.is_active) for release in db.query(Release).all()]
+        for release in db.query(Release).all():
+            release.is_active = False
+        db.commit()
+
+    no_releases = client.get(f"/admin/devices/{device_id}/missions")
+    assert no_releases.status_code == 200
+    assert 'aria-current="page">Configuración' not in no_releases.text
+    assert "Release objetivo" in no_releases.text
+    assert "No hay releases disponibles" in no_releases.text
+    assert "No hay releases publicadas para este entorno." in no_releases.text
+    assert "<button disabled>Actualizar</button>" in no_releases.text
+    assert 'class="skill-label-tooltip" tabindex="0"' in no_releases.text
+    assert 'class="check-control skill-control" tabindex="0"' not in no_releases.text
+
+    with SessionLocal() as db:
+        for release_id, is_active in previous_active:
+            db.get(Release, release_id).is_active = is_active
+        release = Release(version="0.4.5-staging-configuration", filename="Guardian-0.4.5-staging-configuration.zip", sha256="8" * 64, file_size=10, release_notes="Release de prueba para Configuración")
+        db.add(release)
+        db.commit()
+        release_id = release.id
+
+    with_release = client.get(f"/admin/devices/{device_id}/missions")
+    assert f'value="{release_id}"' in with_release.text
+    assert "Release de prueba para Configuración" in with_release.text
+    assert '<button disabled>Actualizar</button>' not in with_release.text
+
+    response = client.post(f"/admin/devices/{device_id}/updates", data={"release_id": release_id}, follow_redirects=False)
+    assert response.status_code == 303
+    with SessionLocal() as db:
+        command = db.query(UpdateCommand).filter(UpdateCommand.device_id == device_id).one()
+        assert command.release_id == release_id
+        assert command.target_version == "0.4.5-staging-configuration"
+
+
 def test_admin_rejects_zero_enabled_mission_skills_without_saving():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-00000000abc2"
