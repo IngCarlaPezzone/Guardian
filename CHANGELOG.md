@@ -2,7 +2,7 @@
 
 ## 0.4.5-staging-tray-icon
 
-- En instalaciones con `GUARDIAN_HOME` explícito (STG/test), muestra el ícono de bandeja naranja y el tooltip `Guardian STG`; PROD conserva el ícono y tooltip azules actuales.
+- En instalaciones con `GUARDIAN_HOME` explícito (STG/test), muestra el ícono de bandeja naranja y el tooltip `Guardian STG`; PROD conserva el ícono y tooltip azules actuales. La prerelease quedó registrada sólo en STG para validación visual.
 
 ## 0.4.4
 

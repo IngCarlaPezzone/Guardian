@@ -101,7 +101,7 @@ La corrección fue integrada en `main` y la release `0.4.4` quedó registrada en
 
 ## Identificación visual de STG
 
-La prerelease `0.4.5-staging-tray-icon` identifica instalaciones STG/test mediante el `GUARDIAN_HOME` explícito ya existente: muestra el ícono de bandeja naranja y el tooltip `Guardian STG`. Las instalaciones PROD, que usan la ubicación canónica, conservan el ícono azul y los textos actuales.
+La prerelease `0.4.5-staging-tray-icon` está registrada sólo en STG para validación visual. Identifica instalaciones STG/test mediante el `GUARDIAN_HOME` explícito ya existente: muestra el ícono de bandeja naranja y el tooltip `Guardian STG`. Las instalaciones PROD, que usan la ubicación canónica, conservan el ícono azul y los textos actuales. No está integrada en `main` ni publicada en PROD.
 
 ## Versionado y promoción
 
