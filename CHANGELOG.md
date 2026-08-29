@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.4.3-rc
+## 0.4.3
 
-- Validada manualmente en STG con la prerelease `0.4.3-staging-comprehension-help.6`, integrada en `main` y preparada como RC `0.4.3-rc.3` exclusivamente en STG. Pendiente de validación integral de RC y promoción; no está publicada en PROD.
+- Validada manualmente en STG con la prerelease `0.4.3-staging-comprehension-help.6` y la RC `0.4.3-rc.3`, e integrada en `main`. La release `0.4.3` está registrada en PROD; queda pendiente la validación obligatoria en PC TEST antes de cualquier dispositivo productivo final.
 - Incorpora ayudas progresivas determinísticas: tras el primer error no ortográfico aparece la rutina `MIRO → PIENSO → RESPONDO` y se puede pedir la ayuda 1; los siguientes errores no ortográficos muestran las ayudas 2 y 3. Llegar a ayuda 3 no desbloquea la misión.
 - Mantiene una rama ortográfica local y conservadora independiente de las ayudas de comprensión. Revelar la forma correcta nunca resuelve automáticamente la misión.
 - Añade Vocabulario de consignas, Fecha de nacimiento como variante distinta de Cumpleaños, íconos PNG locales y el catálogo final editable de preguntas y ayudas de comprensión.
