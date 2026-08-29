@@ -50,6 +50,34 @@ namespace Guardian
         public static MissionConfig Default() { return new MissionConfig { EnabledSkills = new List<string> { "math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication" }, PrivateProfile = new PrivateMissionProfile() }; }
     }
 
+    public static class MissionConfigComparer
+    {
+        public static bool NeedsApply(MissionConfig local, MissionConfig remote)
+        {
+            if (remote == null) return false;
+            if (local == null) return true;
+            return !SameSkills(local.EnabledSkills, remote.EnabledSkills) || !SameProfile(local.PrivateProfile, remote.PrivateProfile);
+        }
+
+        private static bool SameSkills(List<string> left, List<string> right)
+        {
+            var a = new HashSet<string>(left ?? new List<string>(), StringComparer.Ordinal);
+            var b = new HashSet<string>(right ?? new List<string>(), StringComparer.Ordinal);
+            return a.SetEquals(b);
+        }
+
+        private static bool SameProfile(PrivateMissionProfile left, PrivateMissionProfile right)
+        {
+            return SameText(left == null ? null : left.PreferredName, right == null ? null : right.PreferredName)
+                && SameText(left == null ? null : left.FirstName, right == null ? null : right.FirstName)
+                && SameText(left == null ? null : left.MiddleName, right == null ? null : right.MiddleName)
+                && SameText(left == null ? null : left.LastName, right == null ? null : right.LastName)
+                && SameText(left == null ? null : left.BirthDate, right == null ? null : right.BirthDate);
+        }
+
+        private static bool SameText(string left, string right) { return string.Equals(left ?? "", right ?? "", StringComparison.Ordinal); }
+    }
+
     public sealed class MissionRotationState
     {
         public string LocalDate { get; set; }

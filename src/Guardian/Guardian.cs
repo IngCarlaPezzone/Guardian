@@ -1229,7 +1229,9 @@ namespace Guardian
                     _logger.Log("RemoteConfigFailed", new Dictionary<string, object> { { "message", "interval out of range" } });
                     return;
                 }
-                if (remote.version <= _config.RemoteConfigVersion && _config.IntervalSeconds == remote.interval_seconds && !_config.UseTestInterval) return;
+                var missionConfigNeedsApply = MissionConfigComparer.NeedsApply(_config.MissionConfig, remote.mission_config);
+                if (remote.version < _config.RemoteConfigVersion) return;
+                if (remote.version == _config.RemoteConfigVersion && _config.IntervalSeconds == remote.interval_seconds && !_config.UseTestInterval && !missionConfigNeedsApply) return;
                 var oldInterval = _config.EffectiveIntervalSeconds;
                 _config.IntervalSeconds = remote.interval_seconds;
                 _config.UseTestInterval = false;
@@ -3375,6 +3377,9 @@ namespace Guardian
                 GuardianClock.LocalNowProvider = delegate { return new DateTime(2026, 8, 22, 10, 0, 0); };
                 var config = GuardianConfig.Default();
                 config.MissionConfig.EnabledSkills = new List<string> { "math.basic_operations_1.subtraction", "comprehension.functional_1.current_date", "comprehension.functional_1.calendar" };
+                var remoteMissionConfig = new MissionConfig { EnabledSkills = new List<string> { "comprehension.functional_1.identity" }, PrivateProfile = new PrivateMissionProfile { FirstName = "Ana" } };
+                if (!MissionConfigComparer.NeedsApply(config.MissionConfig, remoteMissionConfig)) failures.Add("same-version remote mission configuration must reapply when local skills are stale");
+                if (MissionConfigComparer.NeedsApply(remoteMissionConfig, remoteMissionConfig)) failures.Add("matching mission configuration should not reapply repeatedly");
                 var selector = new MissionSelector(config, new MissionCatalog());
                 var seen = new HashSet<string>();
                 for (var i = 0; i < 3; i++) seen.Add(selector.Next().SkillId);
