@@ -3295,6 +3295,11 @@ namespace Guardian
             if (MissionValidator.DescribeDifference("vernao", "verano") != WritingDifference.TransposedLetters) failures.Add("transposition diagnosis failed");
             if (MissionValidator.DescribeDifference("vereno", "verano") != WritingDifference.SubstitutedLetter) failures.Add("substitution diagnosis failed");
             if (MissionValidator.DescribeDifference("Bauti", "Pereira") != WritingDifference.Unknown) failures.Add("ambiguous diagnosis must stay unknown");
+            if (MissionContent.WritingFeedback(WritingDifference.ExtraLetter) != "Parece que hay una letra de más. Leé cómo lo escribiste.") failures.Add("extra letter writing text changed");
+            if (MissionContent.WritingFeedback(WritingDifference.MissingLetter) != "Parece que falta una letra. Leé cómo lo escribiste.") failures.Add("missing letter writing text changed");
+            if (MissionContent.WritingFeedback(WritingDifference.TransposedLetters) != "Parece que dos letras están en otro orden. Leé cómo lo escribiste.") failures.Add("transposed letters writing text changed");
+            if (MissionContent.WritingFeedback(WritingDifference.SubstitutedLetter) != "Parece que hay una letra que no va. Leé cómo lo escribiste.") failures.Add("substituted letter writing text changed");
+            if (MissionContent.WritingFeedback(WritingDifference.Unknown) != "Leé cómo lo escribiste.") failures.Add("fallback writing text changed");
             if (MissionContent.WritingAnswerRevealed("verano").IndexOf("verano", StringComparison.Ordinal) < 0) failures.Add("revealed writing feedback missing answer");
         }
 
@@ -3375,10 +3380,61 @@ namespace Guardian
                 var ageVariants = new HashSet<string>();
                 for (var i = 0; i < 80; i++) { var generated = new MissionCatalog().Generate("comprehension.functional_1.age_birth", profile, new Dictionary<string, string>(), new Random(i)); ageVariants.Add(generated.VariantId); if (generated.HelpSteps == null || generated.HelpSteps.Count != 3) failures.Add("comprehension mission missing progressive help"); }
                 if (!ageVariants.Contains("birth_date_ask") || !ageVariants.Contains("birthday_ask")) failures.Add("birth date and birthday variants must remain distinct");
+                var temporalVariants = GeneratedVariants("comprehension.functional_1.temporal_relations", profile);
+                if (temporalVariants.Contains("next_month_ask_2")) failures.Add("removed next month variant must not be selectable");
+                if (!temporalVariants.Contains("next_month_ask_1") || !temporalVariants.Contains("previous_month")) failures.Add("remaining temporal month variants missing");
+                var vocabularyVariants = GeneratedVariants("comprehension.functional_1.instruction_vocabulary", new PrivateMissionProfile());
+                if (!vocabularyVariants.Contains("vocab_before") || !vocabularyVariants.Contains("vocab_after")) failures.Add("before and after vocabulary variants must remain selectable");
+                var tomorrow = FindVariant("comprehension.functional_1.temporal_relations", profile, "tomorrow_weekday");
+                var yesterday = FindVariant("comprehension.functional_1.temporal_relations", profile, "yesterday_weekday");
+                var nextMonth = FindVariant("comprehension.functional_1.temporal_relations", profile, "next_month_ask_1");
+                var previousMonth = FindVariant("comprehension.functional_1.temporal_relations", profile, "previous_month");
+                if (tomorrow == null || tomorrow.HelpSteps[2].Text != "Hoy es sábado. ¿Qué día viene después?") failures.Add("tomorrow weekday help must resolve the current weekday");
+                if (yesterday == null || yesterday.HelpSteps[2].Text != "Hoy es sábado. ¿Qué día fue ayer?") failures.Add("yesterday weekday help must resolve the current weekday");
+                if (nextMonth == null || nextMonth.HelpSteps[2].Text != "Ahora estamos en agosto. ¿Qué mes viene después?") failures.Add("next month help must resolve the current month");
+                if (previousMonth == null || previousMonth.HelpSteps[2].Text != "Ahora estamos en agosto. ¿Qué mes estuvo antes?") failures.Add("previous month help must resolve the current month");
+                var nameFieldWithNickname = FindVariant("comprehension.functional_1.identity", profile, "identity_name_field");
+                if (nameFieldWithNickname == null || nameFieldWithNickname.HelpSteps[2].Text != "Tu apodo es Tomi. Acá te están preguntando tu nombre.") failures.Add("name field must resolve configured nickname");
+                var profileWithoutNickname = new PrivateMissionProfile { FirstName = "Ana", MiddleName = "María", LastName = "Gómez", BirthDate = "2010-08-23" };
+                var nameFieldFallback = FindVariant("comprehension.functional_1.identity", profileWithoutNickname, "identity_name_field");
+                if (nameFieldFallback == null || nameFieldFallback.HelpSteps[2].Text != "Pensá en el nombre que figura como tu nombre.") failures.Add("name field must use the nickname fallback");
+                var nameLast = FindVariant("comprehension.functional_1.identity", profileWithoutNickname, "identity_name_last_name_ask");
+                var fullName = FindVariant("comprehension.functional_1.identity", profileWithoutNickname, "identity_full_name_ask");
+                if (nameLast == null || MissionValidator.Validate("Ana Gómez", nameLast) != MissionAnswerResult.Correct || MissionValidator.Validate("Ana María Gómez", nameLast) != MissionAnswerResult.Correct) failures.Add("name and last name must accept first plus last or full name");
+                if (fullName == null || MissionValidator.Validate("Ana Gómez", fullName) != MissionAnswerResult.Wrong || MissionValidator.Validate("Ana María Gómez", fullName) != MissionAnswerResult.Correct) failures.Add("full name must continue requiring the configured full name");
+                var skills = new[] { "comprehension.functional_1.identity", "comprehension.functional_1.age_birth", "comprehension.functional_1.current_date", "comprehension.functional_1.temporal_relations", "comprehension.functional_1.calendar", "comprehension.functional_1.seasons", "comprehension.functional_1.instruction_vocabulary" };
+                var observedVariants = new HashSet<string>();
+                foreach (var skill in skills) observedVariants.UnionWith(GeneratedVariants(skill, profile));
+                var expectedVariants = new HashSet<string> { "identity_name_ask_1", "identity_name_ask_2", "identity_name_field", "identity_last_name_ask", "identity_last_name_field", "identity_name_last_name_ask", "identity_name_last_name_field", "identity_full_name_ask", "age_ask_1", "age_ask_2", "age_field", "birth_year_ask", "birth_year_field", "birthday_ask", "birth_date_ask", "current_year_ask_1", "current_year_ask_2", "current_month_ask_1", "current_month_ask_2", "current_weekday", "current_day_of_month", "current_full_date", "tomorrow_weekday", "yesterday_weekday", "next_month_ask_1", "previous_month", "days_in_week", "months_in_year", "weekday_after", "weekday_before", "month_after", "month_before", "season_cold", "season_hot", "season_falling_leaves", "season_flowers", "season_after", "vocab_how_many", "vocab_quantity", "vocab_before", "vocab_after", "vocab_next", "vocab_previous", "vocab_first", "vocab_last" };
+                if (!observedVariants.SetEquals(expectedVariants)) failures.Add("comprehension catalog variants differ from the expected final catalog");
+                foreach (var skill in skills) for (var i = 0; i < 120; i++)
+                {
+                    var generated = new MissionCatalog().Generate(skill, profile, new Dictionary<string, string>(), new Random(i));
+                    if (generated == null || generated.HelpSteps == null || generated.HelpSteps.Count != 3) { failures.Add("every remaining comprehension variant must have three helps"); break; }
+                    if (generated.Prompt.IndexOf("{", StringComparison.Ordinal) >= 0 || generated.Prompt.IndexOf("**", StringComparison.Ordinal) >= 0) { failures.Add("prompt must not expose placeholders or markdown"); break; }
+                    foreach (var step in generated.HelpSteps) if (step.Text.IndexOf("{", StringComparison.Ordinal) >= 0 || step.Text.IndexOf("**", StringComparison.Ordinal) >= 0) { failures.Add("help must not expose placeholders or markdown"); break; }
+                }
                 var telemetry = MissionTelemetry.Payload(vocabulary, 2, 2, 2, true, 1, false);
                 if (!telemetry.ContainsKey("skill_level_id") || !telemetry.ContainsKey("max_help_level") || telemetry.ContainsKey("input") || telemetry.ContainsKey("accepted_answer")) failures.Add("mission telemetry help fields or privacy boundary failed");
             }
             finally { GuardianClock.LocalNowProvider = originalClock; }
+        }
+
+        private static HashSet<string> GeneratedVariants(string skill, PrivateMissionProfile profile)
+        {
+            var result = new HashSet<string>();
+            for (var i = 0; i < 160; i++) result.Add(new MissionCatalog().Generate(skill, profile, new Dictionary<string, string>(), new Random(i)).VariantId);
+            return result;
+        }
+
+        private static Mission FindVariant(string skill, PrivateMissionProfile profile, string variantId)
+        {
+            for (var i = 0; i < 400; i++)
+            {
+                var mission = new MissionCatalog().Generate(skill, profile, new Dictionary<string, string>(), new Random(i));
+                if (mission != null && mission.VariantId == variantId) return mission;
+            }
+            return null;
         }
 
         private static void CheckMissionUnavailableDeduplication(List<string> failures)
