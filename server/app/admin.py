@@ -21,6 +21,8 @@ router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["guardian_environment"] = settings.guardian_environment.strip().upper()
 templates.env.globals["admin_title"] = settings.admin_title
+ADMIN_CSS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "admin.css").read_bytes()).hexdigest()[:12]
+templates.env.globals["admin_css_version"] = ADMIN_CSS_VERSION
 
 MISSION_LEVELS = [
     ("math", "basic_operations_1", "Operaciones básicas", "Operaciones matemáticas básicas.", [

@@ -8,7 +8,7 @@ os.environ["GUARDIAN_SESSION_SECRET"] = "test-session-secret"
 
 from fastapi.testclient import TestClient
 
-from server.app.admin import sign_username
+from server.app.admin import ADMIN_CSS_VERSION, sign_username
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
@@ -43,6 +43,19 @@ def test_register_rejects_invalid_bootstrap():
         "bootstrap_token": "bad",
     })
     assert response.status_code == 401
+
+
+def test_admin_css_is_served_with_a_content_version():
+    client = admin_client()
+
+    response = client.get("/admin/")
+    assert response.status_code == 200
+    assert f'/admin/static/admin.css?v={ADMIN_CSS_VERSION}' in response.text
+
+    css = client.get(f"/admin/static/admin.css?v={ADMIN_CSS_VERSION}")
+    assert css.status_code == 200
+    assert css.headers["content-type"].startswith("text/css")
+    assert ".card-grid" in css.text
 
 
 def test_device_flow_config_and_update_status():

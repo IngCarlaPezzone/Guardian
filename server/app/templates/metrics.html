@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Métricas - Guardian</title><link rel="stylesheet" href="/admin/static/admin.css"></head>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Métricas - Guardian</title><link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}"></head>
 <body><header><h1>Guardian Admin</h1><nav class="header-actions"><a class="button secondary" href="/admin/">Dispositivos</a><a class="button secondary" href="/admin/devices/{{ device.id }}/missions">Configuración</a><a class="button secondary" href="/admin/devices/{{ device.id }}/activity">Actividad</a></nav></header>
 <main><section><div class="page-heading"><div><p class="eyebrow">{{ device.machine_name }} · Hora local: {{ data.timezone }}</p><h2>Métricas — {{ device.display_name or device.machine_name }}</h2></div></div>
 <nav class="breadcrumbs">{% for label,url in breadcrumbs %}{% if loop.index > 1 %}<span>›</span>{% endif %}{% if url %}<a href="{{ url }}">{{ label }}</a>{% else %}<strong>{{ label }}</strong>{% endif %}{% endfor %}</nav>
