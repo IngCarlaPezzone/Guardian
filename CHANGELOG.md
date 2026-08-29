@@ -2,8 +2,12 @@
 
 ## 0.4.3-staging-comprehension-help
 
-- En preparación para validación STG: incorpora ayudas progresivas determinísticas, rutina de reintento, corrección ortográfica local conservadora y Vocabulario de consignas.
-- Agrega Fecha de nacimiento como variante distinta de Cumpleaños y telemetría de ayuda/escritura sin contenido de respuestas o perfiles privados.
+- Validada manualmente en STG con la prerelease `0.4.3-staging-comprehension-help.6`; pendiente de aprobación para merge, RC y promoción. No está publicada en PROD.
+- Incorpora ayudas progresivas determinísticas: tras el primer error no ortográfico aparece la rutina `MIRO → PIENSO → RESPONDO` y se puede pedir la ayuda 1; los siguientes errores no ortográficos muestran las ayudas 2 y 3. Llegar a ayuda 3 no desbloquea la misión.
+- Mantiene una rama ortográfica local y conservadora independiente de las ayudas de comprensión. Revelar la forma correcta nunca resuelve automáticamente la misión.
+- Añade Vocabulario de consignas, Fecha de nacimiento como variante distinta de Cumpleaños, íconos PNG locales y el catálogo final editable de preguntas y ayudas de comprensión.
+- Retira `next_month_ask_2`; conserva `vocab_before` y `vocab_after`.
+- Amplía la telemetría de misión con niveles de habilidad y ayuda, y estado ortográfico acumulado, sin contenido de respuestas ni datos de perfiles privados.
 
 ## 0.4.2
 

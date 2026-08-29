@@ -85,11 +85,17 @@ La RC `0.4.2-rc.2` validó en un cliente TEST STG el flujo completo `0.4.1 → 0
 
 `0.4.2-rc.1` queda descartada para promoción: resolvía el home explícito demasiado tarde durante el proceso de arranque. No promover esa RC a PROD.
 
+## Feature de comprensión en STG
+
+La feature `0.4.3-staging-comprehension-help.6` fue validada manualmente en STG. Incluye ayudas progresivas, rutina visual, ortografía independiente, íconos PNG y el catálogo final de textos de comprensión. La variante `next_month_ask_2` fue retirada; `vocab_before` y `vocab_after` permanecen disponibles.
+
+La validación confirmó el flujo de las ayudas y los textos dinámicos locales. Esta feature sigue en rama `feature/comprehension-progressive-help`: no fue mergeada, no tiene RC y no fue desplegada en PROD.
+
 ## Versionado y promoción
 
-PROD actual usa SemVer normal: `0.4.1`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+La base estable actual del repositorio es `0.4.2`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
 
-No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. Al aprobar la feature, crear una RC basada en la próxima versión productiva: si PROD es `0.4.1`, probar `0.4.2-rc` integralmente en STG —incluido updater cuando aplique—. Si aprueba, publicar `0.4.2` en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
+No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. Cuando se apruebe esta feature, la candidata productiva prevista es `0.4.3`: primero se debe probar `0.4.3-rc` integralmente en STG —incluido updater cuando aplique— y sólo después publicar `0.4.3` en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
 
 El rollout obligatorio en PROD es: **PC TEST → validar operación → dispositivo productivo final**.
 
