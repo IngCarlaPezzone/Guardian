@@ -89,7 +89,7 @@ La RC `0.4.2-rc.2` validó en un cliente TEST STG el flujo completo `0.4.1 → 0
 
 La feature `0.4.3-staging-comprehension-help.6` fue validada manualmente en STG. Incluye ayudas progresivas, rutina visual, ortografía independiente, íconos PNG y el catálogo final de textos de comprensión. La variante `next_month_ask_2` fue retirada; `vocab_before` y `vocab_after` permanecen disponibles.
 
-La validación confirmó el flujo de las ayudas y los textos dinámicos locales. La RC `0.4.3-rc.2` está registrada sólo en STG y queda pendiente de la validación integral de RC, incluido el updater. Corrige la instalación de `Assets\Icons`; `0.4.3-rc` queda descartada porque los omitía durante la actualización. Esta feature está integrada en `main` y no fue desplegada en PROD.
+La validación confirmó el flujo de las ayudas y los textos dinámicos locales. La RC `0.4.3-rc.3` está registrada sólo en STG y queda pendiente de la validación integral de RC, incluido el updater. Respalda e instala `Assets\Icons` y, además, embebe los PNG en `Guardian.exe` para cubrir actualizaciones iniciadas por un updater anterior. `0.4.3-rc` y `0.4.3-rc.2` quedan descartadas para promoción. Esta feature está integrada en `main` y no fue desplegada en PROD.
 
 ## Versionado y promoción
 
