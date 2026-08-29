@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import re
 from urllib.parse import urlencode
 from datetime import date as date_cls, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -166,13 +167,33 @@ def event_label(event_type: str) -> str:
     return labels.get(event_type, event_type)
 
 
-def update_view_model(command: UpdateCommand | None):
+def update_view_model(command: UpdateCommand | None, guardian_state: str):
     if command is None:
         return None
+    labels = {
+        "pending": "Pendiente",
+        "acknowledged": "Recibida",
+        "downloading": "Descargando",
+        "installing": "Instalando",
+        "success": "Completada",
+        "failed": "Fallida",
+        "rolled_back": "Revertida",
+        "cancelled": "Cancelada",
+    }
+    technical_notes = {
+        "update command timed out before terminal status": "La actualización no informó un estado final a tiempo.",
+        "cancelled by administrator before device acknowledgement": "Cancelada antes de que el dispositivo la recibiera.",
+    }
+    contextual_message = None
+    if command.status == "pending" and guardian_state == "offline":
+        contextual_message = "Pendiente — el dispositivo está offline. La actualización comenzará cuando vuelva a conectarse."
     return {
         "command": command,
         "last_change": command_last_change(command),
         "is_active": command.status in {"pending", "acknowledged", "downloading", "installing"},
+        "label": labels.get(command.status, command.status),
+        "contextual_message": contextual_message,
+        "technical_note": None if command.status == "success" else technical_notes.get(command.error_message, command.error_message),
     }
 
 
@@ -186,10 +207,12 @@ def active_device_command(db: Session, device_id: str) -> DeviceCommand | None:
 
 
 def supports_remote_controls(device: Device) -> bool:
-    try:
-        return tuple(int(part) for part in (device.client_version or "").split(".")) >= (0, 3, 2)
-    except ValueError:
-        return False
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?", (device.client_version or "").strip())
+    return match is not None and tuple(int(part) for part in match.groups()) >= (0, 3, 2)
+
+
+def quick_actions_enabled(device: Device, pending_command: DeviceCommand | None) -> bool:
+    return is_device_online(device) and supports_remote_controls(device) and pending_command is None
 
 
 def device_guardian_state(device: Device) -> str:
@@ -217,6 +240,7 @@ def render_mission_config(request: Request, device: Device, db: Session, selecte
         )
     releases = db.query(Release).filter(Release.is_active.is_(True)).order_by(Release.created_at.desc()).all()
     update_command = db.query(UpdateCommand).filter(UpdateCommand.device_id == device.id).order_by(UpdateCommand.requested_at.desc()).first()
+    guardian_state = device_guardian_state(device)
     return templates.TemplateResponse("missions.html", {
         "request": request,
         "device": device,
@@ -225,7 +249,9 @@ def render_mission_config(request: Request, device: Device, db: Session, selecte
         "profile": device.mission_profile,
         "error": error,
         "releases": releases,
-        "update_command": update_command,
+        "guardian_state": guardian_state,
+        "guardian_state_label": {"active": "Online · Activo", "paused": "Online · Pausado", "offline": "Offline"}[guardian_state],
+        "update": update_view_model(update_command, guardian_state),
         "update_enabled": active_update(db, device.id) is None,
     }, status_code=status_code)
 
@@ -250,7 +276,7 @@ def dashboard(
         "devices": devices,
         "command_status_by_device": command_status_by_device,
         "guardian_state_by_device": {device.id: device_guardian_state(device) for device in devices},
-        "remote_controls_supported_by_device": {device.id: supports_remote_controls(device) for device in devices},
+        "quick_actions_enabled_by_device": {device.id: quick_actions_enabled(device, command_status_by_device[device.id]) for device in devices},
     })
 
 

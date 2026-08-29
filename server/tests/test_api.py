@@ -433,6 +433,69 @@ def test_admin_keeps_offline_quick_actions_visible_but_disabled():
     assert "esperando que el dispositivo se conecte" not in response.text
 
 
+def test_dashboard_quick_actions_follow_guardian_state_with_prerelease_versions():
+    client = admin_client()
+    active_id = "00000000-0000-4000-8000-000000000181"
+    paused_id = "00000000-0000-4000-8000-000000000182"
+    offline_id = "00000000-0000-4000-8000-000000000183"
+    with SessionLocal() as db:
+        db.add_all([
+            Device(id=active_id, machine_name="Quick-Active-PC", display_name="Acciones activas", token_hash=hash_secret("quick-active-token"), client_version="0.4.5-staging-stage3-iteration4", last_seen_at=utcnow(), monitoring_enabled=True),
+            Device(id=paused_id, machine_name="Quick-Paused-PC", display_name="Acciones pausadas", token_hash=hash_secret("quick-paused-token"), client_version="0.4.5-staging-stage3-iteration4", last_seen_at=utcnow(), monitoring_enabled=False),
+            Device(id=offline_id, machine_name="Quick-Offline-PC", display_name="Acciones offline", token_hash=hash_secret("quick-offline-token"), client_version="0.4.5-staging-stage3-iteration4", last_seen_at=None, monitoring_enabled=True),
+        ])
+        db.commit()
+
+    dashboard = client.get("/admin/")
+
+    def card_for(name):
+        start = dashboard.text.rfind("<article", 0, dashboard.text.index(name))
+        return dashboard.text[start:dashboard.text.index("</article>", start)]
+
+    active_card = card_for("Acciones activas")
+    assert "Online · Activo" in active_card
+    assert '<button class="secondary" >Pausar misiones</button>' in active_card
+    assert '<button >Probar misión ahora</button>' in active_card
+
+    paused_card = card_for("Acciones pausadas")
+    assert "Online · Pausado" in paused_card
+    assert '<button class="secondary" >Reanudar misiones</button>' in paused_card
+    assert '<button >Probar misión ahora</button>' in paused_card
+
+    offline_card = card_for("Acciones offline")
+    assert "Offline" in offline_card
+    assert '<button class="secondary" disabled>Pausar misiones</button>' in offline_card
+    assert '<button disabled>Probar misión ahora</button>' in offline_card
+
+
+def test_configuration_update_status_uses_device_state_and_human_messages():
+    client = admin_client()
+    offline_id = "00000000-0000-4000-8000-000000000184"
+    completed_id = "00000000-0000-4000-8000-000000000185"
+    with SessionLocal() as db:
+        release = Release(version="0.4.5-staging-update-status", filename="Guardian-0.4.5-staging-update-status.zip", sha256="7" * 64, file_size=10)
+        offline = Device(id=offline_id, machine_name="Update-Offline-PC", token_hash=hash_secret("update-offline-token"), client_version="0.4.4", last_seen_at=None)
+        completed = Device(id=completed_id, machine_name="Update-Completed-PC", token_hash=hash_secret("update-completed-token"), client_version="0.4.5-staging-update-status", last_seen_at=utcnow())
+        db.add_all([release, offline, completed])
+        db.flush()
+        db.add_all([
+            UpdateCommand(device_id=offline_id, release_id=release.id, target_version=release.version, status="pending"),
+            UpdateCommand(device_id=completed_id, release_id=release.id, target_version=release.version, status="success", error_message="already running target version"),
+        ])
+        db.commit()
+
+    pending = client.get(f"/admin/devices/{offline_id}/missions")
+    assert "Dispositivo:" in pending.text
+    assert "Offline" in pending.text
+    assert "Estado de actualización: Pendiente" in pending.text
+    assert "Pendiente — el dispositivo está offline. La actualización comenzará cuando vuelva a conectarse." in pending.text
+
+    completed = client.get(f"/admin/devices/{completed_id}/missions")
+    assert "Online · Activo" in completed.text
+    assert "Estado de actualización: Completada" in completed.text
+    assert "already running target version" not in completed.text
+
+
 def test_admin_keeps_release_details_outside_dashboard():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-000000000086"
