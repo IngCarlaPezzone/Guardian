@@ -91,19 +91,19 @@ La feature `0.4.3-staging-comprehension-help.6` fue validada manualmente en STG.
 
 La validación confirmó el flujo de las ayudas y los textos dinámicos locales. La RC `0.4.3-rc.3` validó el updater y el reinicio en STG. Respalda e instala `Assets\Icons` y, además, embebe los PNG en `Guardian.exe` para cubrir actualizaciones iniciadas por un updater anterior. `0.4.3-rc` y `0.4.3-rc.2` quedan descartadas para promoción.
 
-La release `0.4.3` está registrada en PROD, pero todavía no se envió a ningún dispositivo. El siguiente paso obligatorio es actualizar y validar la PC TEST contra PROD; sólo después podrá considerarse el dispositivo productivo final.
+La release `0.4.3` está registrada en PROD y fue reemplazada para la validación posterior por la corrección `0.4.4`. Ninguna de las dos se envió automáticamente a un dispositivo.
 
 ## Corrección de RemoteConfig en STG
 
 La build `0.4.4-staging-remote-config.1` validó en STG que, si la configuración local de misiones está desactualizada pero su versión remota coincide, Guardian vuelve a aplicar habilidades y perfil desde el servidor. Con una única skill de Comprensión habilitada, la misión posterior fue de Comprensión y no de Matemática.
 
-La corrección está en `feature/remote-config-reapply` y todavía no fue integrada ni publicada en PROD.
+La corrección fue integrada en `main` y la release `0.4.4` quedó registrada en PROD. No se envió a ningún dispositivo: el siguiente paso obligatorio es actualizar y validar la PC TEST contra PROD; sólo después podrá considerarse el dispositivo productivo final.
 
 ## Versionado y promoción
 
-La base estable actual del repositorio es `0.4.2`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+La base estable actual del repositorio es `0.4.4`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
 
-No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. La RC `0.4.3-rc.3` se probó integralmente en STG —incluido updater— y la release `0.4.3` está registrada en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
+No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. La RC `0.4.3-rc.3` se probó integralmente en STG —incluido updater—; `0.4.3` y la corrección `0.4.4` están registradas en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
 
 El rollout obligatorio en PROD es: **PC TEST → validar operación → dispositivo productivo final**.
 
