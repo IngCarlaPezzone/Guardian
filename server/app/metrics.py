@@ -19,6 +19,14 @@ CATALOG = {
 VARIANT_LABELS = {
     "vocab_before": "Antes", "vocab_after": "Después", "vocab_next": "Siguiente",
 }
+VARIANT_PROMPTS = {
+    "vocab_how_many": "¿Cuántas estrellas hay?", "vocab_quantity": "Hay 3 lápices. ¿Cuántos lápices hay?",
+    "vocab_before": "Lunes, martes, miércoles. ¿Qué día está antes de miércoles?",
+    "vocab_after": "Enero, febrero, marzo. ¿Qué mes está después de febrero?",
+    "vocab_next": "Uno, dos, tres... ¿qué número es el siguiente?",
+    "vocab_previous": "Uno, dos, tres... ¿qué número es el anterior a tres?",
+    "vocab_first": "Rojo, azul, verde. ¿Cuál está primero?", "vocab_last": "Rojo, azul, verde. ¿Cuál está último?",
+}
 
 MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionSolved"}
 
@@ -200,7 +208,8 @@ def group_rows(records: list[MissionRecord], dimension: str) -> list[dict]:
             label = scope_label(record.category_id, record.level_id, record.skill_id) if record.category_id and record.level_id and record.skill_id else "Histórico sin clasificar"
         else:
             key = (record.variant_id or "legacy",)
-            label = VARIANT_LABELS.get(record.variant_id or "", (record.variant_id or "Histórico sin variante").replace("_", " ").capitalize())
+            variant_id = record.variant_id or ""
+            label = VARIANT_PROMPTS.get(variant_id, VARIANT_LABELS.get(variant_id, (variant_id or "Histórico sin variante").replace("_", " ").capitalize()))
         grouped[(key, label)].append(record)
     rows = []
     for (key, label), row_records in grouped.items():

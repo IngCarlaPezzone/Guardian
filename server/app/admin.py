@@ -258,7 +258,7 @@ def dashboard(
 def device_activity(
     device_id: str,
     request: Request,
-    period: str = Query("today"),
+    period: str | None = Query(None),
     group: str = Query("all"),
     technical: bool = Query(False),
     start: str | None = Query(None),
@@ -272,7 +272,8 @@ def device_activity(
 
     query = db.query(DeviceEvent).filter(DeviceEvent.device_id == device.id)
     local_tz = device_timezone(device)
-    period, resolved_start, resolved_end, start_utc, end_utc, range_error = resolved_period(period, local_tz, start, end)
+    today = utcnow().astimezone(local_tz).date().isoformat()
+    period, resolved_start, resolved_end, start_utc, end_utc, range_error = resolved_period("all" if period == "all" else "range", local_tz, start or today, end or today)
     if start_utc is not None:
         query = query.filter(DeviceEvent.occurred_at >= start_utc, DeviceEvent.occurred_at < end_utc)
 
@@ -300,7 +301,6 @@ def device_activity(
         "request": request,
         "device": device,
         "events": event_rows,
-        "period": period,
         "group": group,
         "start": resolved_start.isoformat() if resolved_start else "",
         "end": resolved_end.isoformat() if resolved_end else "",
@@ -321,7 +321,7 @@ def device_activity(
 def device_metrics(
     device_id: str,
     request: Request,
-    period: str = Query("30d"),
+    period: str | None = Query(None),
     start: str | None = Query(None),
     end: str | None = Query(None),
     category: str | None = Query(None),
@@ -333,9 +333,10 @@ def device_metrics(
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
-    period, resolved_start, resolved_end, _, _, range_error = resolved_period(period, device_timezone(device), start, end)
-    data = dashboard_data(db, device, period if not range_error else "all", start, end, category, level, skill)
-    filter_query = urlencode({key: value for key, value in {"period": period, "start": start if period == "range" else None, "end": end if period == "range" else None}.items() if value})
+    today = utcnow().astimezone(device_timezone(device)).date().isoformat()
+    period, resolved_start, resolved_end, _, _, range_error = resolved_period("all" if period == "all" else "range", device_timezone(device), start or today, end or today)
+    data = dashboard_data(db, device, period if not range_error else "all", start or today, end or today, category, level, skill)
+    filter_query = urlencode({"start": start or today, "end": end or today})
     breadcrumbs = [("Métricas", f"/admin/devices/{device.id}/metrics?{filter_query}")]
     if category:
         breadcrumbs.append((data["scope_label"] if not level else CATALOG.get(category, {}).get("label", category), f"/admin/devices/{device.id}/metrics?{filter_query}&category={category}"))

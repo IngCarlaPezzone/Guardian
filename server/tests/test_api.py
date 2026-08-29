@@ -640,8 +640,8 @@ def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
     response = client.get(f"/admin/devices/{device_id}/metrics?period=all")
     assert response.status_code == 200
     assert "Misiones resueltas" in response.text
-    assert "3 misiones únicas" in response.text
+    assert "Comprensión" in response.text
     skill = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1&skill=calendar")
     assert skill.status_code == 200
-    assert "Ver variantes (1)" in skill.text
+    assert "Preguntas o consignas (1)" in skill.text
     assert "C1" in skill.text

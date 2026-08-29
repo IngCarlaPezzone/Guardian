@@ -9,7 +9,7 @@
 <body class="login">
   <main class="login-panel">
     <h1>{{ admin_title }}</h1>
-    <form method="post" action="/admin/login">
+    <form class="login-form" method="post" action="/admin/login">
       <label>Usuario<input name="username" autocomplete="username" required></label>
       <label>Contrasena<input name="password" type="password" autocomplete="current-password" required></label>
       {% if error %}<p class="error">{{ error }}</p>{% endif %}
