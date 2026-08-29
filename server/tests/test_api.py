@@ -178,6 +178,9 @@ def test_admin_named_pause_and_resume_commands_follow_heartbeat_state():
     pause = client.post(f"/admin/devices/{device_id}/commands/pause_monitoring", follow_redirects=False)
     assert pause.status_code == 303
     assert pause.headers["location"] == f"/admin/devices/{device_id}/missions"
+    pending_page = client.get(pause.headers["location"])
+    assert "Acción pendiente. El estado se actualizará automáticamente al confirmarse en el dispositivo." in pending_page.text
+    assert "window.location.reload()" in pending_page.text
     pending_pause = client.get(f"/api/v1/devices/{device_id}/commands/pending", headers=headers).json()
     assert pending_pause["command_type"] == "pause_monitoring"
     client.post(f"/api/v1/devices/{device_id}/commands/{pending_pause['command_id']}/status", headers=headers, json={"status": "success"})

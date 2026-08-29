@@ -253,6 +253,7 @@ def render_mission_config(request: Request, device: Device, db: Session, selecte
         "guardian_state": guardian_state,
         "guardian_state_label": {"active": "Online · Activo", "paused": "Online · Pausado", "offline": "Offline"}[guardian_state],
         "quick_actions_enabled": quick_actions_enabled(device, pending_command),
+        "pending_device_command": pending_command,
         "update": update_view_model(update_command, guardian_state),
         "update_enabled": active_update(db, device.id) is None,
     }, status_code=status_code)
