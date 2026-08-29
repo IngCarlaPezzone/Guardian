@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.5-staging-tray-icon
+
+- En instalaciones con `GUARDIAN_HOME` explícito (STG/test), muestra el ícono de bandeja naranja y el tooltip `Guardian STG`; PROD conserva el ícono y tooltip azules actuales.
+
 ## 0.4.4
 
 - Corrige la aplicación de RemoteConfig cuando el cliente conserva la misma versión pero sus habilidades o perfil locales no coinciden con el servidor.

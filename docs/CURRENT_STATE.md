@@ -99,6 +99,10 @@ La build `0.4.4-staging-remote-config.1` validó en STG que, si la configuració
 
 La corrección fue integrada en `main` y la release `0.4.4` quedó registrada en PROD. No se envió a ningún dispositivo: el siguiente paso obligatorio es actualizar y validar la PC TEST contra PROD; sólo después podrá considerarse el dispositivo productivo final.
 
+## Identificación visual de STG
+
+La prerelease `0.4.5-staging-tray-icon` identifica instalaciones STG/test mediante el `GUARDIAN_HOME` explícito ya existente: muestra el ícono de bandeja naranja y el tooltip `Guardian STG`. Las instalaciones PROD, que usan la ubicación canónica, conservan el ícono azul y los textos actuales.
+
 ## Versionado y promoción
 
 La base estable actual del repositorio es `0.4.4`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.

@@ -2614,11 +2614,11 @@ namespace Guardian
             menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
             menu.Items.Add(exitItem);
 
-            _trayIcon = TrayIconFactory.Create();
+            _trayIcon = TrayIconFactory.Create(GuardianInstallPaths.HasExplicitHome);
             _notifyIcon = new System.Windows.Forms.NotifyIcon
             {
                 Icon = _trayIcon,
-                Text = "Guardian",
+                Text = TrayIconFactory.Tooltip(GuardianInstallPaths.HasExplicitHome, false),
                 ContextMenuStrip = menu,
                 Visible = true
             };
@@ -2630,7 +2630,7 @@ namespace Guardian
         {
             _startItem.Enabled = !running;
             _stopItem.Enabled = running;
-            _notifyIcon.Text = running ? "Guardian activo" : "Guardian detenido";
+            _notifyIcon.Text = TrayIconFactory.Tooltip(GuardianInstallPaths.HasExplicitHome, running);
         }
 
         private void RequestAdminAction(string title, Action action)
@@ -2691,11 +2691,11 @@ namespace Guardian
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern bool DestroyIcon(IntPtr handle);
 
-        public static System.Drawing.Icon Create()
+        public static System.Drawing.Icon Create(bool isStaging)
         {
             using (var bitmap = new System.Drawing.Bitmap(32, 32))
             using (var g = System.Drawing.Graphics.FromImage(bitmap))
-            using (var navy = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(30, 64, 119)))
+            using (var primary = new System.Drawing.SolidBrush(isStaging ? System.Drawing.Color.FromArgb(234, 88, 12) : System.Drawing.Color.FromArgb(30, 64, 119)))
             using (var face = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(252, 211, 177)))
             using (var visor = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(15, 23, 42)))
             using (var white = new System.Drawing.SolidBrush(System.Drawing.Color.White))
@@ -2703,11 +2703,11 @@ namespace Guardian
             {
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 g.Clear(System.Drawing.Color.Transparent);
-                g.FillEllipse(navy, 3, 3, 26, 26);
+                g.FillEllipse(primary, 3, 3, 26, 26);
                 g.FillPie(face, 8, 10, 16, 17, 0, 180);
                 g.FillEllipse(face, 8, 12, 16, 14);
                 g.FillRectangle(visor, 7, 7, 18, 6);
-                g.FillRectangle(navy, 9, 5, 14, 6);
+                g.FillRectangle(primary, 9, 5, 14, 6);
                 g.FillEllipse(white, 12, 16, 2, 2);
                 g.FillEllipse(white, 18, 16, 2, 2);
                 g.DrawArc(pen, 12, 17, 8, 6, 20, 140);
@@ -2722,6 +2722,12 @@ namespace Guardian
                     DestroyIcon(handle);
                 }
             }
+        }
+
+        public static string Tooltip(bool isStaging, bool running)
+        {
+            if (isStaging) return running ? "Guardian STG activo" : "Guardian STG detenido";
+            return running ? "Guardian activo" : "Guardian detenido";
         }
     }
 
@@ -3264,6 +3270,7 @@ namespace Guardian
             CheckMediaPolicy(failures);
             CheckUsageCounter(failures);
             CheckConfig(failures);
+            CheckTrayEnvironmentLabel(failures);
             CheckGuardianServerUrlValidation(failures);
             CheckEventShape(failures);
             CheckEventLogger(failures);
@@ -3323,6 +3330,14 @@ namespace Guardian
             if (!AdminAuth.Verify(config, "admin", "guardian")) failures.Add("default admin credentials should verify");
             if (AdminAuth.Verify(config, "admin", "wrong")) failures.Add("wrong admin password should fail");
             if (AdminAuth.Verify(config, "other", "guardian")) failures.Add("wrong admin username should fail");
+        }
+
+        private static void CheckTrayEnvironmentLabel(List<string> failures)
+        {
+            if (TrayIconFactory.Tooltip(true, true) != "Guardian STG activo") failures.Add("staging tray tooltip must be explicit");
+            if (TrayIconFactory.Tooltip(true, false) != "Guardian STG detenido") failures.Add("staging stopped tray tooltip must be explicit");
+            if (TrayIconFactory.Tooltip(false, true) != "Guardian activo") failures.Add("production tray tooltip changed");
+            if (TrayIconFactory.Tooltip(false, false) != "Guardian detenido") failures.Add("production stopped tray tooltip changed");
         }
 
         private static void CheckMediaPolicy(List<string> failures)
