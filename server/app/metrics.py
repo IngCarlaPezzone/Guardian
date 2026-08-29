@@ -13,7 +13,11 @@ from server.app.models import Device, DeviceEvent
 
 CATALOG = {
     "math": {"label": "Matemática", "levels": {"basic_operations_1": {"label": "Operaciones básicas", "skills": {"addition": "Sumas", "subtraction": "Restas", "multiplication": "Multiplicaciones"}}}},
-    "comprehension": {"label": "Comprensión", "levels": {"functional_1": {"label": "Comprensión funcional", "skills": {"identity": "Identidad", "age_birth": "Edad y nacimiento", "current_date": "Fecha actual", "temporal_relations": "Relaciones temporales", "calendar": "Calendario", "seasons": "Estaciones"}}}},
+    "comprehension": {"label": "Comprensión", "levels": {"functional_1": {"label": "Comprensión funcional", "skills": {"identity": "Identidad", "age_birth": "Edad y nacimiento", "instruction_vocabulary": "Vocabulario de consignas", "current_date": "Fecha actual", "temporal_relations": "Relaciones temporales", "calendar": "Calendario", "seasons": "Estaciones"}}}},
+}
+
+VARIANT_LABELS = {
+    "vocab_before": "Antes", "vocab_after": "Después", "vocab_next": "Siguiente",
 }
 
 MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionSolved"}
@@ -21,6 +25,11 @@ MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionSolved"}
 
 def device_timezone(device: Device) -> tzinfo:
     name = (device.configuration.timezone if device.configuration else "UTC") or "UTC"
+    if name.startswith("UTC") and len(name) == 9 and name[3] in {"+", "-"} and name[4:6].isdigit() and name[6] == ":" and name[7:].isdigit():
+        minutes = int(name[4:6]) * 60 + int(name[7:])
+        if name[3] == "-":
+            minutes = -minutes
+        return timezone(timedelta(minutes=minutes), name)
     try:
         return ZoneInfo(name)
     except ZoneInfoNotFoundError:
@@ -39,24 +48,43 @@ def scope_label(category: str | None = None, level: str | None = None, skill: st
     return "Global"
 
 
-def date_range(period: str, tz: ZoneInfo, start_value: str | None = None, end_value: str | None = None, now: datetime | None = None):
+def resolved_period(period: str, tz: tzinfo, start_value: str | None = None, end_value: str | None = None, now: datetime | None = None):
     now = (now or datetime.now(timezone.utc)).astimezone(tz)
     today = now.date()
     if period == "today":
-        start, end = today, today + timedelta(days=1)
+        start, end = today, today
+    elif period == "yesterday":
+        start = end = today - timedelta(days=1)
     elif period == "7d":
-        start, end = today - timedelta(days=6), today + timedelta(days=1)
+        start, end = today - timedelta(days=6), today
     elif period == "30d":
-        start, end = today - timedelta(days=29), today + timedelta(days=1)
+        start, end = today - timedelta(days=29), today
     elif period == "range":
         try:
             start = date.fromisoformat(start_value or "")
-            end = date.fromisoformat(end_value or "") + timedelta(days=1)
+            end = date.fromisoformat(end_value or "")
         except ValueError:
-            start, end = today - timedelta(days=6), today + timedelta(days=1)
+            return period, None, None, None, None, "Ingresá fechas válidas para el rango personalizado."
+        if start > end:
+            return period, start, end, None, None, "La fecha Desde no puede ser posterior a Hasta."
+    elif period == "all":
+        return period, None, None, None, None, None
     else:
-        return None, None
-    return datetime.combine(start, time.min, tzinfo=tz).astimezone(timezone.utc), datetime.combine(end, time.min, tzinfo=tz).astimezone(timezone.utc)
+        return "today", today, today, *period_bounds(today, today, tz), None
+    start_utc, end_utc = period_bounds(start, end, tz)
+    return period, start, end, start_utc, end_utc, None
+
+
+def period_bounds(start: date, end: date, tz: tzinfo):
+    return (
+        datetime.combine(start, time.min, tzinfo=tz).astimezone(timezone.utc),
+        datetime.combine(end + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc),
+    )
+
+
+def date_range(period: str, tz: tzinfo, start_value: str | None = None, end_value: str | None = None, now: datetime | None = None):
+    _, _, _, start_utc, end_utc, _ = resolved_period(period, tz, start_value, end_value, now)
+    return start_utc, end_utc
 
 
 def payload_value(payload: dict, key: str, legacy_key: str | None = None):
@@ -172,7 +200,7 @@ def group_rows(records: list[MissionRecord], dimension: str) -> list[dict]:
             label = scope_label(record.category_id, record.level_id, record.skill_id) if record.category_id and record.level_id and record.skill_id else "Histórico sin clasificar"
         else:
             key = (record.variant_id or "legacy",)
-            label = record.variant_id or "Histórico sin variante"
+            label = VARIANT_LABELS.get(record.variant_id or "", (record.variant_id or "Histórico sin variante").replace("_", " ").capitalize())
         grouped[(key, label)].append(record)
     rows = []
     for (key, label), row_records in grouped.items():
@@ -201,7 +229,7 @@ def daily_rows(records: list[MissionRecord], tz: ZoneInfo) -> list[dict]:
 
 def dashboard_data(db: Session, device: Device, period: str, start: str | None, end: str | None, category: str | None, level: str | None, skill: str | None) -> dict:
     tz = device_timezone(device)
-    start_utc, end_utc = date_range(period, tz, start, end)
+    _, _, _, start_utc, end_utc, _ = resolved_period(period, tz, start, end)
     # Los intentos de una misión pueden cruzar el límite del período. Se cargan sólo
     # eventos de misión del dispositivo y luego se filtra por la fecha de resolución,
     # conservando el MissionStarted necesario para la métrica experimental de tiempo.

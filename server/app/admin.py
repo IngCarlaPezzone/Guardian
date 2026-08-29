@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from urllib.parse import urlencode
 from datetime import date as date_cls, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from server.app.config import settings
 from server.app.db import get_db
 from server.app.models import DEVICE_KIND_OPERATIONAL, AdminUser, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
-from server.app.metrics import CATALOG, dashboard_data, device_timezone
+from server.app.metrics import CATALOG, dashboard_data, device_timezone, resolved_period
 from server.app.security import VALID_DEVICE_COMMAND_TYPES, current_admin, utcnow, valid_interval, valid_semver, verify_secret
 from server.app.update_queue import active_update, cleanup_update_queue, command_last_change, latest_update_by_device
 
@@ -208,12 +209,14 @@ def valid_timezone(value: str) -> str | None:
     return name
 
 
-def render_mission_config(request: Request, device: Device, selected: list[str] | None = None, error: str | None = None, status_code: int = 200):
+def render_mission_config(request: Request, device: Device, db: Session, selected: list[str] | None = None, error: str | None = None, status_code: int = 200):
     if selected is None:
         selected = ((device.configuration.mission_config if device.configuration else {}) or {}).get(
             "enabledSkills",
             ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"],
         )
+    releases = db.query(Release).filter(Release.is_active.is_(True)).order_by(Release.created_at.desc()).all()
+    update_command = db.query(UpdateCommand).filter(UpdateCommand.device_id == device.id).order_by(UpdateCommand.requested_at.desc()).first()
     return templates.TemplateResponse("missions.html", {
         "request": request,
         "device": device,
@@ -221,6 +224,9 @@ def render_mission_config(request: Request, device: Device, selected: list[str] 
         "selected": selected,
         "profile": device.mission_profile,
         "error": error,
+        "releases": releases,
+        "update_command": update_command,
+        "update_enabled": active_update(db, device.id) is None,
     }, status_code=status_code)
 
 
@@ -255,7 +261,8 @@ def device_activity(
     period: str = Query("today"),
     group: str = Query("all"),
     technical: bool = Query(False),
-    event_date: str | None = Query(None, alias="date"),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(current_admin),
 ):
@@ -265,30 +272,9 @@ def device_activity(
 
     query = db.query(DeviceEvent).filter(DeviceEvent.device_id == device.id)
     local_tz = device_timezone(device)
-    selected_day = None
-    range_start = None
-    range_end = None
-    today = utcnow().astimezone(local_tz).date()
-    if period == "today":
-        selected_day = today
-    elif period == "yesterday":
-        selected_day = today - timedelta(days=1)
-    elif period == "7d":
-        range_start, range_end = today - timedelta(days=6), today + timedelta(days=1)
-    elif period == "30d":
-        range_start, range_end = today - timedelta(days=29), today + timedelta(days=1)
-    elif period == "date":
-        selected_day = parse_day(event_date)
-    elif period != "all":
-        period = "today"
-        selected_day = today
-
-    if selected_day is not None:
-        range_start, range_end = selected_day, selected_day + timedelta(days=1)
-    if range_start is not None:
-        start = datetime.combine(range_start, time.min, tzinfo=local_tz).astimezone(timezone.utc)
-        end = datetime.combine(range_end, time.min, tzinfo=local_tz).astimezone(timezone.utc)
-        query = query.filter(DeviceEvent.occurred_at >= start, DeviceEvent.occurred_at < end)
+    period, resolved_start, resolved_end, start_utc, end_utc, range_error = resolved_period(period, local_tz, start, end)
+    if start_utc is not None:
+        query = query.filter(DeviceEvent.occurred_at >= start_utc, DeviceEvent.occurred_at < end_utc)
 
     if group != "all":
         event_types = EVENT_GROUPS.get(group)
@@ -316,8 +302,9 @@ def device_activity(
         "events": event_rows,
         "period": period,
         "group": group,
-        "event_date": (selected_day.isoformat() if selected_day is not None else (event_date or "")),
-        "selected_day": selected_day,
+        "start": resolved_start.isoformat() if resolved_start else "",
+        "end": resolved_end.isoformat() if resolved_end else "",
+        "range_error": range_error,
         "timezone_label": str(local_tz),
         "technical": technical,
         "groups": [
@@ -346,17 +333,19 @@ def device_metrics(
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
-    data = dashboard_data(db, device, period, start, end, category, level, skill)
-    breadcrumbs = [("Métricas", f"/admin/devices/{device.id}/metrics?period={period}")]
+    period, resolved_start, resolved_end, _, _, range_error = resolved_period(period, device_timezone(device), start, end)
+    data = dashboard_data(db, device, period if not range_error else "all", start, end, category, level, skill)
+    filter_query = urlencode({key: value for key, value in {"period": period, "start": start if period == "range" else None, "end": end if period == "range" else None}.items() if value})
+    breadcrumbs = [("Métricas", f"/admin/devices/{device.id}/metrics?{filter_query}")]
     if category:
-        breadcrumbs.append((data["scope_label"] if not level else CATALOG.get(category, {}).get("label", category), f"/admin/devices/{device.id}/metrics?period={period}&category={category}"))
+        breadcrumbs.append((data["scope_label"] if not level else CATALOG.get(category, {}).get("label", category), f"/admin/devices/{device.id}/metrics?{filter_query}&category={category}"))
     if level:
-        breadcrumbs.append((CATALOG.get(category or "", {}).get("levels", {}).get(level, {}).get("label", level), f"/admin/devices/{device.id}/metrics?period={period}&category={category}&level={level}"))
+        breadcrumbs.append((CATALOG.get(category or "", {}).get("levels", {}).get(level, {}).get("label", level), f"/admin/devices/{device.id}/metrics?{filter_query}&category={category}&level={level}"))
     if skill:
         breadcrumbs.append((data["scope_label"], ""))
     return templates.TemplateResponse("metrics.html", {
-        "request": request, "device": device, "data": data, "period": period, "start": start or "", "end": end or "",
-        "category": category, "level": level, "skill": skill, "breadcrumbs": breadcrumbs,
+        "request": request, "device": device, "data": data, "period": period, "start": resolved_start.isoformat() if resolved_start else "", "end": resolved_end.isoformat() if resolved_end else "",
+        "range_error": range_error, "category": category, "level": level, "skill": skill, "breadcrumbs": breadcrumbs, "filter_query": filter_query,
     })
 
 
@@ -388,34 +377,31 @@ def logout():
 
 
 @router.post("/devices/{device_id}/config")
-def update_device_config(device_id: str, request: Request, display_name: str = Form(""), interval_minutes: int = Form(...), timezone_name: str = Form("UTC"), missions_submitted: str = Form(""), enabled_skills: list[str] = Form([]), preferred_name: str = Form(""), first_name: str = Form(""), middle_name: str = Form(""), last_name: str = Form(""), birth_date: str = Form(""), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
+def update_device_config(device_id: str, request: Request, display_name: str = Form(""), interval_minutes: int = Form(...), missions_submitted: str = Form(""), enabled_skills: list[str] = Form([]), preferred_name: str = Form(""), first_name: str = Form(""), middle_name: str = Form(""), last_name: str = Form(""), birth_date: str = Form(""), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
     seconds = int(interval_minutes) * 60
     if not valid_interval(seconds):
         raise HTTPException(status_code=422, detail="interval out of range")
-    timezone_name = valid_timezone(timezone_name)
-    if timezone_name is None:
-        raise HTTPException(status_code=422, detail="timezone must be a valid IANA timezone")
     selected = None
     if missions_submitted == "1":
         valid_skills = {key for _, _, _, _, skills in MISSION_LEVELS for key, _, _ in skills}
         selected = [key for key in enabled_skills if key in valid_skills]
         if not selected:
-            return render_mission_config(request, device, selected=[], error="Seleccioná al menos una habilidad antes de guardar.", status_code=422)
+            return render_mission_config(request, device, db, selected=[], error="Seleccioná al menos una habilidad antes de guardar.", status_code=422)
     device.display_name = display_name.strip() or None
     config = device.configuration
     changed = False
     if config is None:
-        config = DeviceConfiguration(device_id=device.id, interval_seconds=seconds, timezone=timezone_name, version=1)
+        config = DeviceConfiguration(device_id=device.id, interval_seconds=seconds, timezone="UTC", version=1, mission_config={"enabledSkills": ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"]})
         db.add(config)
     else:
         if config.interval_seconds != seconds:
             config.interval_seconds = seconds
             changed = True
-        if config.timezone != timezone_name:
-            config.timezone = timezone_name
+        if not (config.mission_config or {}).get("enabledSkills") and missions_submitted != "1":
+            config.mission_config = {"enabledSkills": ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"]}
             changed = True
     if missions_submitted == "1":
         mission_config = config.mission_config or {}
@@ -441,7 +427,7 @@ def update_device_config(device_id: str, request: Request, display_name: str = F
     if changed:
         config.version += 1
     db.commit()
-    return RedirectResponse("/admin/", status_code=303)
+    return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
 
 
 @router.get("/devices/{device_id}/missions", response_class=HTMLResponse)
@@ -449,7 +435,7 @@ def mission_config_page(device_id: str, request: Request, db: Session = Depends(
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
-    return render_mission_config(request, device)
+    return render_mission_config(request, device, db)
 
 
 @router.post("/devices/{device_id}/updates")
@@ -462,13 +448,13 @@ def request_update(device_id: str, release_id: str = Form(...), db: Session = De
     db.flush()
     if release.version == device.client_version:
         db.commit()
-        return RedirectResponse("/admin/", status_code=303)
+        return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
     if active_update(db, device.id) is not None:
         db.commit()
-        return RedirectResponse("/admin/", status_code=303)
+        return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
     db.add(UpdateCommand(device_id=device.id, release_id=release.id, target_version=release.version, status="pending"))
     db.commit()
-    return RedirectResponse("/admin/", status_code=303)
+    return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
 
 
 @router.post("/devices/{device_id}/updates/{command_id}/cancel")

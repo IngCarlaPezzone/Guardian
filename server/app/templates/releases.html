@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}">
 </head>
 <body>
-  <header><h1>Releases — {{ admin_title }}</h1><a href="/admin/">Volver</a></header>
+  <header><h1>Releases — {{ admin_title }}</h1><nav class="header-actions"><a class="button secondary" href="/admin/">Dispositivos</a><span class="button secondary active" aria-current="page">Releases</span></nav></header>
   <main>
     {% for release in releases %}
     <article class="card">

@@ -1894,7 +1894,8 @@ namespace Guardian
                 { "device_id", config.DeviceId },
                 { "machine_name", Environment.MachineName },
                 { "client_version", AppInfo.Version },
-                { "bootstrap_token", config.DeviceBootstrapToken }
+                { "bootstrap_token", config.DeviceBootstrapToken },
+                { "timezone_offset_minutes", (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow).TotalMinutes }
             };
             var response = PostJson<RegisterDeviceResponse>(config, "/api/v1/devices/register", payload, false);
             if (response == null || string.IsNullOrWhiteSpace(response.device_token)) return;
@@ -1912,7 +1913,8 @@ namespace Guardian
                 { "machine_name", Environment.MachineName },
                 { "client_version", AppInfo.Version },
                 { "effective_interval_seconds", config.EffectiveIntervalSeconds },
-                { "monitoring_enabled", monitoringEnabled }
+                { "monitoring_enabled", monitoringEnabled },
+                { "timezone_offset_minutes", (int)TimeZoneInfo.Local.GetUtcOffset(DateTime.UtcNow).TotalMinutes }
             };
             PostJson<object>(config, "/api/v1/devices/" + config.DeviceId + "/heartbeat", payload, true);
             logger.Log("HeartbeatSent", new Dictionary<string, object>

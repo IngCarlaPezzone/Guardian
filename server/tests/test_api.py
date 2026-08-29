@@ -578,7 +578,7 @@ def test_admin_configuration_persists_display_interval_and_timezone():
     assert response.status_code == 303
     remote = client.get(f"/api/v1/devices/{device_id}/config", headers={"Authorization": f"Bearer {token}"})
     assert remote.status_code == 200
-    assert remote.json()["timezone"] == "America/Argentina/Buenos_Aires"
+    assert remote.json()["timezone"] == "UTC"
     with SessionLocal() as db:
         device = db.get(Device, device_id)
         assert device.display_name == "PC de prueba"
@@ -644,4 +644,4 @@ def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
     skill = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1&skill=calendar")
     assert skill.status_code == 200
     assert "Ver variantes (1)" in skill.text
-    assert "c1" in skill.text
+    assert "C1" in skill.text
