@@ -89,7 +89,7 @@ La RC `0.4.2-rc.2` validó en un cliente TEST STG el flujo completo `0.4.1 → 0
 
 La feature `0.4.3-staging-comprehension-help.6` fue validada manualmente en STG. Incluye ayudas progresivas, rutina visual, ortografía independiente, íconos PNG y el catálogo final de textos de comprensión. La variante `next_month_ask_2` fue retirada; `vocab_before` y `vocab_after` permanecen disponibles.
 
-La validación confirmó el flujo de las ayudas y los textos dinámicos locales. Esta feature sigue en rama `feature/comprehension-progressive-help`: no fue mergeada, no tiene RC y no fue desplegada en PROD.
+La validación confirmó el flujo de las ayudas y los textos dinámicos locales. Esta feature está integrada en `main`, todavía no tiene RC y no fue desplegada en PROD.
 
 ## Versionado y promoción
 

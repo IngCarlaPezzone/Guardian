@@ -2,7 +2,7 @@
 
 ## 0.4.3-staging-comprehension-help
 
-- Validada manualmente en STG con la prerelease `0.4.3-staging-comprehension-help.6`; pendiente de aprobación para merge, RC y promoción. No está publicada en PROD.
+- Validada manualmente en STG con la prerelease `0.4.3-staging-comprehension-help.6` e integrada en `main`; pendiente de RC y promoción. No está publicada en PROD.
 - Incorpora ayudas progresivas determinísticas: tras el primer error no ortográfico aparece la rutina `MIRO → PIENSO → RESPONDO` y se puede pedir la ayuda 1; los siguientes errores no ortográficos muestran las ayudas 2 y 3. Llegar a ayuda 3 no desbloquea la misión.
 - Mantiene una rama ortográfica local y conservadora independiente de las ayudas de comprensión. Revelar la forma correcta nunca resuelve automáticamente la misión.
 - Añade Vocabulario de consignas, Fecha de nacimiento como variante distinta de Cumpleaños, íconos PNG locales y el catálogo final editable de preguntas y ayudas de comprensión.
