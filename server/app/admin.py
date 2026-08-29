@@ -241,6 +241,7 @@ def render_mission_config(request: Request, device: Device, db: Session, selecte
     releases = db.query(Release).filter(Release.is_active.is_(True)).order_by(Release.created_at.desc()).all()
     update_command = db.query(UpdateCommand).filter(UpdateCommand.device_id == device.id).order_by(UpdateCommand.requested_at.desc()).first()
     guardian_state = device_guardian_state(device)
+    pending_command = active_device_command(db, device.id)
     return templates.TemplateResponse("missions.html", {
         "request": request,
         "device": device,
@@ -251,6 +252,7 @@ def render_mission_config(request: Request, device: Device, db: Session, selecte
         "releases": releases,
         "guardian_state": guardian_state,
         "guardian_state_label": {"active": "Online · Activo", "paused": "Online · Pausado", "offline": "Offline"}[guardian_state],
+        "quick_actions_enabled": quick_actions_enabled(device, pending_command),
         "update": update_view_model(update_command, guardian_state),
         "update_enabled": active_update(db, device.id) is None,
     }, status_code=status_code)
@@ -276,7 +278,6 @@ def dashboard(
         "devices": devices,
         "command_status_by_device": command_status_by_device,
         "guardian_state_by_device": {device.id: device_guardian_state(device) for device in devices},
-        "quick_actions_enabled_by_device": {device.id: quick_actions_enabled(device, command_status_by_device[device.id]) for device in devices},
     })
 
 

@@ -83,10 +83,11 @@ def test_dashboard_shows_operational_devices_and_hides_synthetic_stg_records_by_
     assert "0.4.4-staging-stage3" in dashboard.text
     assert "Intervalo:" in dashboard.text
     assert "15 min" in dashboard.text
-    assert "Pausar misiones" in dashboard.text
-    assert "Probar misión ahora" in dashboard.text
-    assert f"/admin/devices/{operational_id}/activity" in dashboard.text
+    assert "Pausar misiones" not in dashboard.text
+    assert "Reanudar misiones" not in dashboard.text
+    assert "Probar misión ahora" not in dashboard.text
     assert f"/admin/devices/{operational_id}/missions" in dashboard.text
+    assert f"/admin/devices/{operational_id}/activity" in dashboard.text
     assert f"/admin/devices/{operational_id}/metrics" in dashboard.text
     assert 'name="release_id"' not in dashboard.text
     assert "Distribución" not in dashboard.text
@@ -414,7 +415,7 @@ def test_admin_cancels_only_pending_update_and_prevents_duplicate_device_command
         assert db.query(DeviceCommand).filter(DeviceCommand.device_id == device_id).count() == 1
 
 
-def test_admin_keeps_offline_quick_actions_visible_but_disabled():
+def test_configuration_keeps_offline_quick_actions_visible_but_disabled():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-000000000089"
     with SessionLocal() as db:
@@ -425,15 +426,15 @@ def test_admin_keeps_offline_quick_actions_visible_but_disabled():
         db.add(UpdateCommand(device_id=device_id, release_id=release.id, target_version=release.version, status="pending"))
         db.commit()
 
-    response = client.get("/admin/")
+    response = client.get(f"/admin/devices/{device_id}/missions")
     assert response.status_code == 200
     assert "Pausar misiones" in response.text
     assert "Probar misión ahora" in response.text
     assert "disabled" in response.text
-    assert "esperando que el dispositivo se conecte" not in response.text
+    assert 'action="/admin/devices/' + device_id + '/commands/pause_monitoring"' in response.text
 
 
-def test_dashboard_quick_actions_follow_guardian_state_with_prerelease_versions():
+def test_configuration_quick_actions_follow_guardian_state_with_prerelease_versions():
     client = admin_client()
     active_id = "00000000-0000-4000-8000-000000000181"
     paused_id = "00000000-0000-4000-8000-000000000182"
@@ -446,26 +447,23 @@ def test_dashboard_quick_actions_follow_guardian_state_with_prerelease_versions(
         ])
         db.commit()
 
-    dashboard = client.get("/admin/")
+    active_page = client.get(f"/admin/devices/{active_id}/missions")
+    assert "Online · Activo" in active_page.text
+    assert '<button class="secondary" type="submit" >Pausar misiones</button>' in active_page.text
+    assert '<button type="submit" >Probar misión ahora</button>' in active_page.text
 
-    def card_for(name):
-        start = dashboard.text.rfind("<article", 0, dashboard.text.index(name))
-        return dashboard.text[start:dashboard.text.index("</article>", start)]
+    paused_page = client.get(f"/admin/devices/{paused_id}/missions")
+    assert "Online · Pausado" in paused_page.text
+    assert '<button class="secondary" type="submit" >Reanudar misiones</button>' in paused_page.text
+    assert '<button type="submit" >Probar misión ahora</button>' in paused_page.text
 
-    active_card = card_for("Acciones activas")
-    assert "Online · Activo" in active_card
-    assert '<button class="secondary" >Pausar misiones</button>' in active_card
-    assert '<button >Probar misión ahora</button>' in active_card
-
-    paused_card = card_for("Acciones pausadas")
-    assert "Online · Pausado" in paused_card
-    assert '<button class="secondary" >Reanudar misiones</button>' in paused_card
-    assert '<button >Probar misión ahora</button>' in paused_card
-
-    offline_card = card_for("Acciones offline")
-    assert "Offline" in offline_card
-    assert '<button class="secondary" disabled>Pausar misiones</button>' in offline_card
-    assert '<button disabled>Probar misión ahora</button>' in offline_card
+    offline_page = client.get(f"/admin/devices/{offline_id}/missions")
+    assert "Offline" in offline_page.text
+    assert '<button class="secondary" type="submit" disabled>Pausar misiones</button>' in offline_page.text
+    assert '<button type="submit" disabled>Probar misión ahora</button>' in offline_page.text
+    actions_start = offline_page.text.index('device-actions')
+    actions_end = offline_page.text.index('<details class="card config-card"', actions_start)
+    assert 'form="device-config-form"' not in offline_page.text[actions_start:actions_end]
 
 
 def test_configuration_update_status_uses_device_state_and_human_messages():
