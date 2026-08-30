@@ -1,11 +1,11 @@
 # Changelog
 
-## 0.4.5 — pendiente de promoción a PROD
+## Próxima 0.4.5 — servidor/Admin Stage 3 desplegado; cliente pendiente
 
 - Prepara Stage 3 del Admin: Dashboard operativo de dispositivos, Configuración unificada, Activity con hora local y Métricas con agregación server-side y drill-down.
 - Agrega las migraciones `0005_device_timezone` y `0006_device_kind`, compatibles con datos existentes: los dispositivos preexistentes permanecen operacionales y los registros sintéticos de STG se clasifican explícitamente.
 - El cliente `0.4.5` reporta su offset horario local durante registro y heartbeat. El servidor Stage 3 sigue aceptando clientes `0.4.4`, que conservan `UTC` hasta su actualización.
-- Esta versión todavía no fue desplegada en PROD ni publicada como release cliente.
+- El servidor/Admin Stage 3 ya está desplegado en PROD y validado con clientes `0.4.4`; el cliente `0.4.5` todavía no fue publicado ni desplegado.
 
 ## 0.4.4
 

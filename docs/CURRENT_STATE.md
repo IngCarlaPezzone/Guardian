@@ -140,15 +140,15 @@ La importación sanitizada también fue validada manualmente contra PROD: la pri
 
 Nunca se utiliza una feature branch sobre PROD para una vista previa visual o funcional.
 
-## Stage 3 — Admin y métricas (preparada para promoción; aún no está en PROD)
+## Stage 3 — Admin y métricas (servidor/Admin desplegado en PROD)
 
-La rama `feature/stage3-admin-metrics` incorpora Stage 3A/3B y **no está en PROD**. La validación STG está completa; la promoción propuesta es la versión `0.4.5`, pendiente de backup, merge, despliegue y validación posterior en PC TEST.
+Stage 3A/3B de servidor/Admin está desplegado en PROD desde `main`. Las migraciones `0005_device_timezone` y `0006_device_kind` llegaron a `head` con datos existentes preservados. Los clientes actuales `0.4.4` continúan funcionando y reportando heartbeats/RemoteConfig; el cliente Guardian `0.4.5` todavía no fue publicado ni desplegado.
 
 - Admin con cards compactas: `display_name` principal, hostname secundario, estado operativo y acciones remotas agrupadas.
 - Configuración unificada de nombre visible, intervalo, skills y perfil privado; la zona horaria es técnica, automática y no editable en Admin.
 - Activity con fecha y hora local del dispositivo, filtros de período, categorías humanas, eventos técnicos opcionales y JSON desplegable.
 - Métricas agregadas server-side por `mission_id`, con compatibilidad `missionId`, reintentos deduplicados, drill-down Global → Categoría → Nivel → Skill y variantes bajo demanda.
-- La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC. El cliente `0.4.5` reporta su offset local en registro y heartbeat; los clientes `0.4.4` compatibles conservan `UTC` hasta actualizarse.
+- La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC. El futuro cliente `0.4.5` reportará su offset local en registro y heartbeat; los clientes `0.4.4` compatibles conservan `UTC` hasta actualizarse.
 - El Dashboard muestra por defecto sólo dispositivos `operational`. La migración `0006_device_kind` clasifica explícitamente fixtures `stg_demo` e importaciones `stg_imported_telemetry`, sin deduplicar por hostname; esos registros siguen disponibles para Activity/Métricas y pueden revisarse de forma deliberada en `/admin/?show_synthetic=true`.
 
-La implementación no cambia categorías, niveles ni skills educativas, ni el comportamiento validado de LockWindow, RemoteConfig, perfil privado, rotación o updater. No crear ni seleccionar todavía releases `0.4.5` en PROD: el despliegue de servidor/Admin y el rollout del cliente se realizarán sólo tras la aprobación explícita de promoción.
+La implementación no cambia categorías, niveles ni skills educativas, ni el comportamiento validado de LockWindow, RemoteConfig, perfil privado, rotación o updater. El siguiente paso requiere aprobación independiente: crear y validar el cliente `0.4.5` primero en PC TEST; no seleccionar ni enviar releases a un dispositivo productivo final.
