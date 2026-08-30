@@ -33,22 +33,24 @@
         </div>
       </details>
 
-      <details class="card config-card" data-config-section="update" open>
+      <details id="update-section" class="card config-card" data-config-section="update" open>
         <summary><span>Actualización</span><small>Versión y releases disponibles</small></summary>
         <div class="config-content">
           <p>Versión instalada: <strong>{{ device.client_version or '—' }}</strong></p>
           <form method="post" action="/admin/devices/{{ device.id }}/updates">
             {% if releases %}
-            <label>Releases disponibles<select name="release_id" id="release-id">{% for release in releases %}<option value="{{ release.id }}" data-description="{{ release.release_notes or 'Sin descripción disponible.' }}">{{ release.version }}</option>{% endfor %}</select></label>
-            <p class="muted" id="release-description">{{ releases[0].release_notes or 'Sin descripción disponible.' }}</p>
-            <button {{ 'disabled' if not update_enabled else '' }}>Actualizar</button>
+            <label>Releases disponibles<select name="release_id" id="release-id" data-installed-version="{{ device.client_version or '' }}" data-update-active="{{ 'true' if update else 'false' }}">{% for release in releases %}<option value="{{ release.id }}" data-version="{{ release.version }}" data-description="{{ release.release_notes or 'Sin descripción disponible.' }}" {{ 'selected' if selected_release and release.id == selected_release.id else '' }}>{{ release.version }}</option>{% endfor %}</select></label>
+            <p class="muted" id="release-description">{{ selected_release.release_notes or 'Sin descripción disponible.' }}</p>
+            {% if selected_release_is_installed %}<p class="save-confirmation" id="installed-release-status" role="status">Esta release ya está instalada.</p>{% endif %}
+            <button id="update-button" {{ 'disabled' if not update_enabled else '' }}>Actualizar</button>
             {% else %}
             <label>Releases disponibles<select id="release-id" disabled aria-label="Releases disponibles"><option>No hay releases disponibles</option></select></label>
             <p class="muted" id="release-description">No hay releases publicadas para este entorno.</p>
             <button disabled>Actualizar</button>
             {% endif %}
           </form>
-          {% if update %}<div class="update-status"><strong>Estado de actualización: {{ update.label }}</strong><small>Versión destino: {{ update.command.target_version }}</small>{% if update.contextual_message %}<span>{{ update.contextual_message }}</span>{% endif %}{% if update.technical_note %}<small>{{ update.technical_note }}</small>{% endif %}</div>{% endif %}
+          {% if update %}<div class="update-status" data-update-active="true"><strong>Estado actual de actualización: {{ update.label }}</strong><small>Versión destino: {{ update.command.target_version }}</small>{% if update.contextual_message %}<span>{{ update.contextual_message }}</span>{% endif %}{% if update.technical_note %}<small>{{ update.technical_note }}</small>{% endif %}</div>{% endif %}
+          {% if update_history %}<div class="update-status"><strong>Última actualización registrada: {{ update_history.label }}</strong><small>Versión destino: {{ update_history.command.target_version }}</small>{% if update_history.last_change %}<small>Fecha y hora: {{ update_history.last_change.strftime('%d/%m/%Y %H:%M') }}</small>{% endif %}{% if update_history.technical_note %}<small>{{ update_history.technical_note }}</small>{% endif %}</div>{% endif %}
         </div>
       </details>
 
@@ -128,7 +130,24 @@
       parent.addEventListener('change', function () { children.forEach(function (checkbox) { checkbox.checked = parent.checked; }); sync(); });
       children.forEach(function (checkbox) { checkbox.addEventListener('change', sync); });
     });
+    (function () {
+      var releaseSelect = document.getElementById('release-id');
+      var updateButton = document.getElementById('update-button');
+      var releaseDescription = document.getElementById('release-description');
+      var installedStatus = document.getElementById('installed-release-status');
+      if (!releaseSelect || !updateButton) return;
+      function syncReleaseSelection() {
+        var option = releaseSelect.options[releaseSelect.selectedIndex];
+        var isInstalled = option && option.dataset.version === releaseSelect.dataset.installedVersion;
+        if (releaseDescription && option) releaseDescription.textContent = option.dataset.description;
+        if (releaseSelect.dataset.updateActive !== 'true') updateButton.disabled = isInstalled;
+        if (installedStatus) installedStatus.hidden = !isInstalled;
+      }
+      releaseSelect.addEventListener('change', syncReleaseSelection);
+      syncReleaseSelection();
+    }());
     {% if pending_device_command %}window.setTimeout(function () { window.location.reload(); }, 3000);{% endif %}
+    {% if update and update.is_active %}window.setTimeout(function () { window.location.reload(); }, 3000);{% endif %}
   </script>
 </body>
 </html>
