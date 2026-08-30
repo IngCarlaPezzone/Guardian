@@ -25,6 +25,8 @@ templates.env.globals["guardian_environment"] = settings.guardian_environment.st
 templates.env.globals["admin_title"] = settings.admin_title
 ADMIN_CSS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "admin.css").read_bytes()).hexdigest()[:12]
 templates.env.globals["admin_css_version"] = ADMIN_CSS_VERSION
+ADMIN_ICON_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "guardian.png").read_bytes()).hexdigest()[:12]
+templates.env.globals["admin_icon_version"] = ADMIN_ICON_VERSION
 
 MISSION_LEVELS = [
     ("math", "basic_operations_1", "Operaciones básicas", "Operaciones matemáticas básicas.", [

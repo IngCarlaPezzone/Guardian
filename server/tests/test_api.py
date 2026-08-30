@@ -60,7 +60,7 @@ def test_admin_css_is_served_with_a_content_version():
     icon = client.get("/admin/static/guardian.png")
     assert icon.status_code == 200
     assert icon.headers["content-type"].startswith("image/png")
-    assert 'rel="icon" type="image/png" href="/admin/static/guardian.png"' in response.text
+    assert 'rel="icon" type="image/png" href="/admin/static/guardian.png?v=' in response.text
     assert 'class="admin-brand"' in response.text
 
 
