@@ -23,6 +23,14 @@ router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["guardian_environment"] = settings.guardian_environment.strip().upper()
 templates.env.globals["admin_title"] = settings.admin_title
+
+
+def admin_title_with_section(section: str) -> str:
+    environment_suffix = " — STG" if settings.guardian_environment.strip().upper() == "STG" else ""
+    return f"Guardian Admin — {section}{environment_suffix}"
+
+
+templates.env.globals["admin_title_with_section"] = admin_title_with_section
 ADMIN_CSS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "admin.css").read_bytes()).hexdigest()[:12]
 templates.env.globals["admin_css_version"] = ADMIN_CSS_VERSION
 ADMIN_ICON_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "guardian.png").read_bytes()).hexdigest()[:12]

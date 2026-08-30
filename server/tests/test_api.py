@@ -8,7 +8,7 @@ os.environ["GUARDIAN_SESSION_SECRET"] = "test-session-secret"
 
 from fastapi.testclient import TestClient
 
-from server.app.admin import ADMIN_CSS_VERSION, sign_username
+from server.app.admin import ADMIN_CSS_VERSION, admin_title_with_section, sign_username
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
@@ -62,6 +62,7 @@ def test_admin_css_is_served_with_a_content_version():
     assert icon.headers["content-type"].startswith("image/png")
     assert 'rel="icon" type="image/png" href="/admin/static/guardian.png?v=' in response.text
     assert 'class="admin-brand"' in response.text
+    assert admin_title_with_section("Dispositivos").endswith("Dispositivos")
 
 
 def test_dashboard_shows_operational_devices_and_hides_synthetic_stg_records_by_default():
@@ -609,7 +610,9 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     saved_page = client.get(response.headers["location"])
     assert "✓ Guardado" in saved_page.text
     assert "data-config-section=\"device\"" in saved_page.text
-    assert "window.localStorage.getItem" in saved_page.text
+    assert "window.sessionStorage.getItem" in saved_page.text
+    assert "window.sessionStorage.removeItem" in saved_page.text
+    assert "form.addEventListener('submit'" in saved_page.text
 
     headers = {"Authorization": f"Bearer {token}"}
     remote = client.get(f"/api/v1/devices/{device_id}/config", headers=headers)

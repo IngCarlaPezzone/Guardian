@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ admin_title }}</title><link rel="icon" type="image/png" href="/admin/static/guardian.png?v={{ admin_icon_version }}"><link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}"></head>
-<body><header><h1 class="admin-brand"><img src="/admin/static/guardian.png" alt="" title="{{ admin_title }}"> {{ admin_title }}</h1><nav class="header-actions"><a class="button secondary" href="/admin/releases">Releases</a><form method="post" action="/admin/logout"><button class="secondary">Salir</button></form></nav></header>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ admin_title_with_section("Dispositivos") }}</title><link rel="icon" type="image/png" href="/admin/static/guardian.png?v={{ admin_icon_version }}"><link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}"></head>
+<body><header><h1 class="admin-brand"><img src="/admin/static/guardian.png" alt="" title="{{ admin_title_with_section("Dispositivos") }}"> {{ admin_title_with_section("Dispositivos") }}</h1><nav class="header-actions"><a class="button secondary" href="/admin/releases">Releases</a><form method="post" action="/admin/logout"><button class="secondary">Salir</button></form></nav></header>
 <main>
   <section><div class="page-heading"><div><p class="eyebrow">Administración</p><h2>Dispositivos</h2></div></div>
     <div class="card-grid">

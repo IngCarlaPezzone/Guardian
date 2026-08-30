@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Configuración - {{ admin_title }}</title>
+  <title>{{ admin_title_with_section("Configuración") }}</title>
   <link rel="icon" type="image/png" href="/admin/static/guardian.png?v={{ admin_icon_version }}">
   <link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}">
 </head>
 <body>
   <header>
-    <h1 class="admin-brand"><img src="/admin/static/guardian.png" alt="" title="{{ admin_title }}"> {{ admin_title }}</h1>
+    <h1 class="admin-brand"><img src="/admin/static/guardian.png" alt="" title="{{ admin_title_with_section("Configuración") }}"> {{ admin_title_with_section("Configuración") }}</h1>
     <nav class="header-actions"><a class="button secondary" href="/admin/">Dispositivos</a><a class="button secondary" href="/admin/devices/{{ device.id }}/activity">Actividad</a><a class="button secondary" href="/admin/devices/{{ device.id }}/metrics">Métricas</a></nav>
   </header>
   <main>
@@ -84,15 +84,21 @@
     (function () {
       var sections = document.querySelectorAll('[data-config-section]');
       var storageKey = 'guardian-admin:config:{{ device.id }}';
+      var form = document.getElementById('device-config-form');
       var states = {};
-      try { states = JSON.parse(window.localStorage.getItem(storageKey) || '{}'); } catch (ignore) {}
+      if ({{ 'true' if saved else 'false' }}) {
+        try { states = JSON.parse(window.sessionStorage.getItem(storageKey) || '{}'); } catch (ignore) {}
+        window.sessionStorage.removeItem(storageKey);
+      } else {
+        window.sessionStorage.removeItem(storageKey);
+      }
       sections.forEach(function (section) {
         var key = section.dataset.configSection;
         if (Object.prototype.hasOwnProperty.call(states, key)) section.open = states[key];
-        section.addEventListener('toggle', function () {
-          states[key] = section.open;
-          window.localStorage.setItem(storageKey, JSON.stringify(states));
-        });
+      });
+      form.addEventListener('submit', function () {
+        sections.forEach(function (section) { states[section.dataset.configSection] = section.open; });
+        window.sessionStorage.setItem(storageKey, JSON.stringify(states));
       });
     }());
     document.querySelectorAll('.mission-level').forEach(function (level) {
