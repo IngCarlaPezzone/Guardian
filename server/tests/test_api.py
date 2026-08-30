@@ -93,6 +93,8 @@ def test_dashboard_shows_operational_devices_and_hides_synthetic_stg_records_by_
     assert "Pausar misiones" not in dashboard.text
     assert "Reanudar misiones" not in dashboard.text
     assert "Probar misión ahora" not in dashboard.text
+    assert f'<a class="button" href="/admin/devices/{operational_id}/missions">Configuración</a>' in dashboard.text
+    assert f'<a class="button secondary" href="/admin/devices/{operational_id}/missions">Configuración</a>' not in dashboard.text
     assert f"/admin/devices/{operational_id}/missions" in dashboard.text
     assert f"/admin/devices/{operational_id}/activity" in dashboard.text
     assert f"/admin/devices/{operational_id}/metrics" in dashboard.text
@@ -465,17 +467,17 @@ def test_configuration_quick_actions_follow_guardian_state_with_prerelease_versi
 
     active_page = client.get(f"/admin/devices/{active_id}/missions")
     assert "Online · Activo" in active_page.text
-    assert '<button class="secondary" type="submit" >Pausar misiones</button>' in active_page.text
+    assert '<button type="submit" >Pausar misiones</button>' in active_page.text
     assert '<button type="submit" >Probar misión ahora</button>' in active_page.text
 
     paused_page = client.get(f"/admin/devices/{paused_id}/missions")
     assert "Online · Pausado" in paused_page.text
-    assert '<button class="secondary" type="submit" >Reanudar misiones</button>' in paused_page.text
+    assert '<button type="submit" >Reanudar misiones</button>' in paused_page.text
     assert '<button type="submit" >Probar misión ahora</button>' in paused_page.text
 
     offline_page = client.get(f"/admin/devices/{offline_id}/missions")
     assert "Offline" in offline_page.text
-    assert '<button class="secondary" type="submit" disabled>Pausar misiones</button>' in offline_page.text
+    assert '<button type="submit" disabled>Pausar misiones</button>' in offline_page.text
     assert '<button type="submit" disabled>Probar misión ahora</button>' in offline_page.text
     actions_start = offline_page.text.index('device-actions')
     actions_end = offline_page.text.index('<details class="card config-card"', actions_start)
