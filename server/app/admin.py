@@ -1,6 +1,8 @@
 import hashlib
 import hmac
 import json
+import re
+from urllib.parse import urlencode
 from datetime import date as date_cls, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -12,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from server.app.config import settings
 from server.app.db import get_db
-from server.app.models import AdminUser, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
+from server.app.models import DEVICE_KIND_OPERATIONAL, AdminUser, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
+from server.app.metrics import CATALOG, dashboard_data, device_timezone, resolved_period
 from server.app.security import VALID_DEVICE_COMMAND_TYPES, current_admin, utcnow, valid_interval, valid_semver, verify_secret
 from server.app.update_queue import active_update, cleanup_update_queue, command_last_change, latest_update_by_device
 
@@ -20,6 +23,18 @@ router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.globals["guardian_environment"] = settings.guardian_environment.strip().upper()
 templates.env.globals["admin_title"] = settings.admin_title
+
+
+def admin_title_with_section(section: str) -> str:
+    environment_suffix = " — STG" if settings.guardian_environment.strip().upper() == "STG" else ""
+    return f"Guardian Admin — {section}{environment_suffix}"
+
+
+templates.env.globals["admin_title_with_section"] = admin_title_with_section
+ADMIN_CSS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "admin.css").read_bytes()).hexdigest()[:12]
+templates.env.globals["admin_css_version"] = ADMIN_CSS_VERSION
+ADMIN_ICON_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "guardian.png").read_bytes()).hexdigest()[:12]
+templates.env.globals["admin_icon_version"] = ADMIN_ICON_VERSION
 
 MISSION_LEVELS = [
     ("math", "basic_operations_1", "Operaciones básicas", "Operaciones matemáticas básicas.", [
@@ -63,16 +78,14 @@ EVENT_GROUPS = {
         "UpdateCompleted",
         "UpdateFailed",
     ],
-    "control": [
-        "MonitoringPauseCommandReceived",
-        "MonitoringPaused",
-        "MonitoringResumeCommandReceived",
-        "MonitoringResumed",
-        "TriggerMissionCommandReceived",
-        "RemoteMissionTriggered",
+    "system": [
+        "MonitoringPauseCommandReceived", "MonitoringPaused", "MonitoringResumeCommandReceived", "MonitoringResumed",
+        "TriggerMissionCommandReceived", "RemoteMissionTriggered", "Error", "UnhandledError", "HeartbeatFailed",
+        "UpdateFailed", "RemoteConfigFailed", "GuardianStarted", "GuardianStopped", "DeviceLocked", "DeviceUnlocked",
     ],
-    "errors": ["Error", "UnhandledError", "HeartbeatFailed", "UpdateFailed", "RemoteConfigFailed"],
 }
+
+TECHNICAL_EVENTS = {"HeartbeatSent", "RemoteConfigFetched", "RemoteConfigReceived", "TelemetryConcurrentSelfTest"}
 
 
 def parse_day(value: str | None) -> date_cls | None:
@@ -115,6 +128,17 @@ def to_admin_time(value: datetime | None):
 
 def event_summary(event: DeviceEvent) -> str:
     payload = event.payload or {}
+    if event.event_type in {"MissionStarted", "MissionFailed", "MissionSolved"}:
+        category = payload.get("category_id")
+        level = payload.get("level_id")
+        skill = payload.get("skill_id")
+        label = CATALOG.get(category or "", {}).get("levels", {}).get(level or "", {}).get("skills", {}).get(skill or "", skill or "Misión")
+        attempt = payload.get("attempt")
+        if event.event_type == "MissionSolved":
+            return f"{label} · {attempt or '?'} intento"
+        if event.event_type == "MissionFailed":
+            return f"{label} · reintento {attempt or '?'}"
+        return label
     keys = [
         "version",
         "targetVersion",
@@ -144,13 +168,42 @@ def event_summary(event: DeviceEvent) -> str:
     return " | ".join(parts)
 
 
-def update_view_model(command: UpdateCommand | None):
+def event_label(event_type: str) -> str:
+    labels = {
+        "MissionStarted": "Misión iniciada", "MissionFailed": "Misión con reintento", "MissionSolved": "Misión resuelta",
+        "RemoteConfigApplied": "Configuración aplicada", "UpdateCompleted": "Actualización completada",
+        "UpdateFailed": "Actualización fallida", "MonitoringPaused": "Misiones pausadas", "MonitoringResumed": "Misiones reanudadas",
+    }
+    return labels.get(event_type, event_type)
+
+
+def update_view_model(command: UpdateCommand | None, guardian_state: str):
     if command is None:
         return None
+    labels = {
+        "pending": "Pendiente",
+        "acknowledged": "Recibida",
+        "downloading": "Descargando",
+        "installing": "Instalando",
+        "success": "Completada",
+        "failed": "Fallida",
+        "rolled_back": "Revertida",
+        "cancelled": "Cancelada",
+    }
+    technical_notes = {
+        "update command timed out before terminal status": "La actualización no informó un estado final a tiempo.",
+        "cancelled by administrator before device acknowledgement": "Cancelada antes de que el dispositivo la recibiera.",
+    }
+    contextual_message = None
+    if command.status == "pending" and guardian_state == "offline":
+        contextual_message = "Pendiente — el dispositivo está offline. La actualización comenzará cuando vuelva a conectarse."
     return {
         "command": command,
         "last_change": command_last_change(command),
         "is_active": command.status in {"pending", "acknowledged", "downloading", "installing"},
+        "label": labels.get(command.status, command.status),
+        "contextual_message": contextual_message,
+        "technical_note": None if command.status == "success" else technical_notes.get(command.error_message, command.error_message),
     }
 
 
@@ -164,10 +217,12 @@ def active_device_command(db: Session, device_id: str) -> DeviceCommand | None:
 
 
 def supports_remote_controls(device: Device) -> bool:
-    try:
-        return tuple(int(part) for part in (device.client_version or "").split(".")) >= (0, 3, 2)
-    except ValueError:
-        return False
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?", (device.client_version or "").strip())
+    return match is not None and tuple(int(part) for part in match.groups()) >= (0, 3, 2)
+
+
+def quick_actions_enabled(device: Device, pending_command: DeviceCommand | None) -> bool:
+    return is_device_online(device) and supports_remote_controls(device) and pending_command is None
 
 
 def device_guardian_state(device: Device) -> str:
@@ -176,12 +231,27 @@ def device_guardian_state(device: Device) -> str:
     return "active" if device.monitoring_enabled else "paused"
 
 
-def render_mission_config(request: Request, device: Device, selected: list[str] | None = None, error: str | None = None, status_code: int = 200):
+def valid_timezone(value: str) -> str | None:
+    name = (value or "").strip()
+    if name == "UTC":
+        return name
+    try:
+        ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        return None
+    return name
+
+
+def render_mission_config(request: Request, device: Device, db: Session, selected: list[str] | None = None, error: str | None = None, saved: bool = False, status_code: int = 200):
     if selected is None:
         selected = ((device.configuration.mission_config if device.configuration else {}) or {}).get(
             "enabledSkills",
             ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"],
         )
+    releases = db.query(Release).filter(Release.is_active.is_(True)).order_by(Release.created_at.desc()).all()
+    update_command = db.query(UpdateCommand).filter(UpdateCommand.device_id == device.id).order_by(UpdateCommand.requested_at.desc()).first()
+    guardian_state = device_guardian_state(device)
+    pending_command = active_device_command(db, device.id)
     return templates.TemplateResponse("missions.html", {
         "request": request,
         "device": device,
@@ -189,33 +259,37 @@ def render_mission_config(request: Request, device: Device, selected: list[str] 
         "selected": selected,
         "profile": device.mission_profile,
         "error": error,
+        "saved": saved,
+        "releases": releases,
+        "guardian_state": guardian_state,
+        "guardian_state_label": {"active": "Online · Activo", "paused": "Online · Pausado", "offline": "Offline"}[guardian_state],
+        "quick_actions_enabled": quick_actions_enabled(device, pending_command),
+        "pending_device_command": pending_command,
+        "update": update_view_model(update_command, guardian_state),
+        "update_enabled": active_update(db, device.id) is None,
     }, status_code=status_code)
 
 
 @router.get("/", response_class=HTMLResponse)
-def dashboard(request: Request, db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
-    devices = db.query(Device).order_by(Device.registered_at.desc()).all()
+def dashboard(
+    request: Request,
+    show_synthetic: bool = Query(False),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(current_admin),
+):
+    query = db.query(Device)
+    if not show_synthetic:
+        query = query.filter(Device.device_kind == DEVICE_KIND_OPERATIONAL)
+    devices = query.order_by(Device.registered_at.desc()).all()
     for device in devices:
         cleanup_update_queue(db, device)
     db.commit()
-    releases = db.query(Release).filter(Release.is_active.is_(True)).order_by(Release.created_at.desc()).all()
-    latest = releases[0] if releases else None
-    latest_updates = latest_update_by_device(db)
-    update_status_by_device = {device.id: update_view_model(latest_updates.get(device.id)) for device in devices}
     command_status_by_device = {device.id: active_device_command(db, device.id) for device in devices}
-    now = utcnow()
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "devices": devices,
-        "releases": releases,
-        "latest": latest,
-        "update_status_by_device": update_status_by_device,
         "command_status_by_device": command_status_by_device,
         "guardian_state_by_device": {device.id: device_guardian_state(device) for device in devices},
-        "remote_controls_supported_by_device": {device.id: supports_remote_controls(device) for device in devices},
-        "online_by_device": {device.id: is_device_online(device) for device in devices},
-        "now": now,
-        "online_threshold_seconds": settings.online_threshold_seconds,
     })
 
 
@@ -223,9 +297,11 @@ def dashboard(request: Request, db: Session = Depends(get_db), admin: AdminUser 
 def device_activity(
     device_id: str,
     request: Request,
-    period: str = Query("today"),
+    period: str | None = Query(None),
     group: str = Query("all"),
-    event_date: str | None = Query(None, alias="date"),
+    technical: bool = Query(False),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(current_admin),
 ):
@@ -234,20 +310,11 @@ def device_activity(
         raise HTTPException(status_code=404)
 
     query = db.query(DeviceEvent).filter(DeviceEvent.device_id == device.id)
-    selected_day = None
-    if period == "today":
-        selected_day = admin_now().date()
-    elif period == "yesterday":
-        selected_day = admin_now().date() - timedelta(days=1)
-    elif period == "date":
-        selected_day = parse_day(event_date)
-    elif period != "all":
-        period = "today"
-        selected_day = admin_now().date()
-
-    if selected_day is not None:
-        start, end = admin_day_range_utc(selected_day)
-        query = query.filter(DeviceEvent.occurred_at >= start, DeviceEvent.occurred_at < end)
+    local_tz = device_timezone(device)
+    today = utcnow().astimezone(local_tz).date().isoformat()
+    period, resolved_start, resolved_end, start_utc, end_utc, range_error = resolved_period("all" if period == "all" else "range", local_tz, start or today, end or today)
+    if start_utc is not None:
+        query = query.filter(DeviceEvent.occurred_at >= start_utc, DeviceEvent.occurred_at < end_utc)
 
     if group != "all":
         event_types = EVENT_GROUPS.get(group)
@@ -255,13 +322,16 @@ def device_activity(
             group = "all"
         else:
             query = query.filter(DeviceEvent.event_type.in_(event_types))
+    if not technical:
+        query = query.filter(~DeviceEvent.event_type.in_(TECHNICAL_EVENTS))
 
     events = query.order_by(DeviceEvent.occurred_at.desc()).limit(300).all()
     event_rows = [
         {
             "event": event,
             "summary": event_summary(event),
-            "occurred_local": to_admin_time(event.occurred_at),
+            "label": event_label(event.event_type),
+            "occurred_local": event.occurred_at.astimezone(local_tz) if event.occurred_at else None,
             "payload_json": json.dumps(event.payload or {}, ensure_ascii=False, indent=2, sort_keys=True),
         }
         for event in events
@@ -270,19 +340,52 @@ def device_activity(
         "request": request,
         "device": device,
         "events": event_rows,
-        "period": period,
         "group": group,
-        "event_date": (selected_day.isoformat() if selected_day is not None else (event_date or "")),
-        "selected_day": selected_day,
-        "timezone_label": str(admin_timezone()),
+        "start": resolved_start.isoformat() if resolved_start else "",
+        "end": resolved_end.isoformat() if resolved_end else "",
+        "range_error": range_error,
+        "timezone_label": str(local_tz),
+        "technical": technical,
         "groups": [
             ("all", "Todos"),
             ("missions", "Misiones"),
-            ("config", "Configuracion"),
+            ("config", "Configuración"),
             ("updates", "Actualizaciones"),
-            ("control", "Control"),
-            ("errors", "Errores"),
+            ("system", "Sistema"),
         ],
+    })
+
+
+@router.get("/devices/{device_id}/metrics", response_class=HTMLResponse)
+def device_metrics(
+    device_id: str,
+    request: Request,
+    period: str | None = Query(None),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    category: str | None = Query(None),
+    level: str | None = Query(None),
+    skill: str | None = Query(None),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(current_admin),
+):
+    device = db.get(Device, device_id)
+    if device is None:
+        raise HTTPException(status_code=404)
+    today = utcnow().astimezone(device_timezone(device)).date().isoformat()
+    period, resolved_start, resolved_end, _, _, range_error = resolved_period("all" if period == "all" else "range", device_timezone(device), start or today, end or today)
+    data = dashboard_data(db, device, period if not range_error else "all", start or today, end or today, category, level, skill)
+    filter_query = urlencode({"start": start or today, "end": end or today})
+    breadcrumbs = [("Métricas", f"/admin/devices/{device.id}/metrics?{filter_query}")]
+    if category:
+        breadcrumbs.append((data["scope_label"] if not level else CATALOG.get(category, {}).get("label", category), f"/admin/devices/{device.id}/metrics?{filter_query}&category={category}"))
+    if level:
+        breadcrumbs.append((CATALOG.get(category or "", {}).get("levels", {}).get(level, {}).get("label", level), f"/admin/devices/{device.id}/metrics?{filter_query}&category={category}&level={level}"))
+    if skill:
+        breadcrumbs.append((data["scope_label"], ""))
+    return templates.TemplateResponse("metrics.html", {
+        "request": request, "device": device, "data": data, "period": period, "start": resolved_start.isoformat() if resolved_start else "", "end": resolved_end.isoformat() if resolved_end else "",
+        "range_error": range_error, "category": category, "level": level, "skill": skill, "breadcrumbs": breadcrumbs, "filter_query": filter_query,
     })
 
 
@@ -326,16 +429,19 @@ def update_device_config(device_id: str, request: Request, display_name: str = F
         valid_skills = {key for _, _, _, _, skills in MISSION_LEVELS for key, _, _ in skills}
         selected = [key for key in enabled_skills if key in valid_skills]
         if not selected:
-            return render_mission_config(request, device, selected=[], error="Seleccioná al menos una habilidad antes de guardar.", status_code=422)
+            return render_mission_config(request, device, db, selected=[], error="Seleccioná al menos una habilidad antes de guardar.", status_code=422)
     device.display_name = display_name.strip() or None
     config = device.configuration
     changed = False
     if config is None:
-        config = DeviceConfiguration(device_id=device.id, interval_seconds=seconds, version=1)
+        config = DeviceConfiguration(device_id=device.id, interval_seconds=seconds, timezone="UTC", version=1, mission_config={"enabledSkills": ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"]})
         db.add(config)
     else:
         if config.interval_seconds != seconds:
             config.interval_seconds = seconds
+            changed = True
+        if not (config.mission_config or {}).get("enabledSkills") and missions_submitted != "1":
+            config.mission_config = {"enabledSkills": ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"]}
             changed = True
     if missions_submitted == "1":
         mission_config = config.mission_config or {}
@@ -361,15 +467,15 @@ def update_device_config(device_id: str, request: Request, display_name: str = F
     if changed:
         config.version += 1
     db.commit()
-    return RedirectResponse("/admin/", status_code=303)
+    return RedirectResponse(f"/admin/devices/{device.id}/missions?saved=1", status_code=303)
 
 
 @router.get("/devices/{device_id}/missions", response_class=HTMLResponse)
-def mission_config_page(device_id: str, request: Request, db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
+def mission_config_page(device_id: str, request: Request, saved: bool = Query(False), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
-    return render_mission_config(request, device)
+    return render_mission_config(request, device, db, saved=saved)
 
 
 @router.post("/devices/{device_id}/updates")
@@ -382,13 +488,13 @@ def request_update(device_id: str, release_id: str = Form(...), db: Session = De
     db.flush()
     if release.version == device.client_version:
         db.commit()
-        return RedirectResponse("/admin/", status_code=303)
+        return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
     if active_update(db, device.id) is not None:
         db.commit()
-        return RedirectResponse("/admin/", status_code=303)
+        return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
     db.add(UpdateCommand(device_id=device.id, release_id=release.id, target_version=release.version, status="pending"))
     db.commit()
-    return RedirectResponse("/admin/", status_code=303)
+    return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
 
 
 @router.post("/devices/{device_id}/updates/{command_id}/cancel")
@@ -418,7 +524,7 @@ def queue_device_command(device_id: str, command_type: str, db: Session) -> None
 @router.post("/devices/{device_id}/commands/{command_type}")
 def request_named_device_command(device_id: str, command_type: str, db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     queue_device_command(device_id, command_type, db)
-    return RedirectResponse("/admin/", status_code=303)
+    return RedirectResponse(f"/admin/devices/{device_id}/missions", status_code=303)
 
 
 @router.post("/devices/{device_id}/commands")

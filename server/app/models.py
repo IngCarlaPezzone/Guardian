@@ -14,6 +14,11 @@ def new_id():
     return str(uuid.uuid4())
 
 
+DEVICE_KIND_OPERATIONAL = "operational"
+DEVICE_KIND_STG_DEMO = "stg_demo"
+DEVICE_KIND_STG_IMPORTED_TELEMETRY = "stg_imported_telemetry"
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -43,6 +48,7 @@ class Device(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     monitoring_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    device_kind: Mapped[str] = mapped_column(String(32), default=DEVICE_KIND_OPERATIONAL, server_default=DEVICE_KIND_OPERATIONAL, nullable=False)
 
     configuration: Mapped["DeviceConfiguration"] = relationship(back_populates="device", uselist=False)
     events: Mapped[list["DeviceEvent"]] = relationship(back_populates="device")
@@ -57,6 +63,7 @@ class DeviceConfiguration(Base):
     device_id: Mapped[str] = mapped_column(String(36), ForeignKey("devices.id"), unique=True, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     interval_seconds: Mapped[int] = mapped_column(Integer, default=900, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
     mission_config: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)

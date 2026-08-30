@@ -1,11 +1,20 @@
 from server.app.config import Settings
 from server.app import seed_stg
+from server.app.admin import admin_title_with_section, settings as admin_settings
 from server.app.security import is_prerelease, valid_semver
 
 
 def test_stg_title_is_explicit():
     assert Settings(guardian_environment="STG").admin_title == "Guardian Admin — STG"
     assert Settings(guardian_environment="PROD").admin_title == "Guardian Admin"
+
+
+def test_admin_section_title_places_environment_last(monkeypatch):
+    monkeypatch.setattr(admin_settings, "guardian_environment", "STG")
+    assert admin_title_with_section("Dispositivos") == "Guardian Admin — Dispositivos — STG"
+
+    monkeypatch.setattr(admin_settings, "guardian_environment", "PROD")
+    assert admin_title_with_section("Dispositivos") == "Guardian Admin — Dispositivos"
 
 
 def test_seed_refuses_non_staging_environment(monkeypatch):

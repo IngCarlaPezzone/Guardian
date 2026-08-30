@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from server.app.config import settings
 from server.app.db import SessionLocal
-from server.app.models import Device, DeviceConfiguration, DeviceEvent
+from server.app.models import DEVICE_KIND_STG_IMPORTED_TELEMETRY, Device, DeviceConfiguration, DeviceEvent
 from server.app.security import hash_secret
 
 
@@ -83,7 +83,7 @@ def main() -> None:
                     id=device_id, machine_name=f"STG-IMPORTED-TELEMETRY-{slot}",
                     display_name=f"Telemetría importada STG {slot}",
                     token_hash=hash_secret(f"stg-import-only-{slot}"), client_version=None,
-                    monitoring_enabled=True,
+                    monitoring_enabled=True, device_kind=DEVICE_KIND_STG_IMPORTED_TELEMETRY,
                 ))
                 db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=1, mission_config={"enabledSkills": []}))
         db.flush()

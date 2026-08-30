@@ -21,6 +21,7 @@ class RegisterPayload(BaseModel):
     machine_name: str
     client_version: str
     bootstrap_token: str
+    timezone_offset_minutes: int | None = Field(default=None, ge=-840, le=840)
 
 
 class HeartbeatPayload(BaseModel):
@@ -28,6 +29,15 @@ class HeartbeatPayload(BaseModel):
     client_version: str
     effective_interval_seconds: int
     monitoring_enabled: bool = True
+    timezone_offset_minutes: int | None = Field(default=None, ge=-840, le=840)
+
+
+def timezone_from_offset(offset_minutes: int | None) -> str | None:
+    if offset_minutes is None:
+        return None
+    sign = "+" if offset_minutes >= 0 else "-"
+    absolute = abs(offset_minutes)
+    return f"UTC{sign}{absolute // 60:02d}:{absolute % 60:02d}"
 
 
 class UpdateStatusPayload(BaseModel):
@@ -88,12 +98,14 @@ def register_device(payload: RegisterPayload, db: Session = Depends(get_db)):
         )
         db.add(device)
         db.flush()
-        db.add(DeviceConfiguration(device_id=device.id, interval_seconds=900, version=1))
+        db.add(DeviceConfiguration(device_id=device.id, interval_seconds=900, timezone=timezone_from_offset(payload.timezone_offset_minutes) or "UTC", version=1, mission_config={"enabledSkills": ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"]}))
     else:
         device.machine_name = payload.machine_name
         device.client_version = payload.client_version
         device.last_seen_at = utcnow()
         device.token_hash = hash_secret(token)
+        if device.configuration and timezone_from_offset(payload.timezone_offset_minutes):
+            device.configuration.timezone = timezone_from_offset(payload.timezone_offset_minutes)
     db.commit()
     return {"device_id": device.id, "device_token": token}
 
@@ -104,6 +116,9 @@ def heartbeat(payload: HeartbeatPayload, device: Device = Depends(current_device
     device.client_version = payload.client_version
     device.monitoring_enabled = payload.monitoring_enabled
     device.last_seen_at = utcnow()
+    timezone_name = timezone_from_offset(payload.timezone_offset_minutes)
+    if device.configuration and timezone_name:
+        device.configuration.timezone = timezone_name
     cleanup_update_queue(db, device)
     db.commit()
     pending = db.query(UpdateCommand).filter(UpdateCommand.device_id == device.id, UpdateCommand.status == "pending").first() is not None
@@ -119,12 +134,13 @@ def heartbeat(payload: HeartbeatPayload, device: Device = Depends(current_device
 def get_config(device: Device = Depends(current_device)):
     config = device.configuration
     if config is None:
-        return {"version": 1, "interval_seconds": 900, "updated_at": utcnow().isoformat(), "mission_config": {"EnabledSkills": [], "PrivateProfile": {}}}
+        return {"version": 1, "interval_seconds": 900, "timezone": "UTC", "updated_at": utcnow().isoformat(), "mission_config": {"EnabledSkills": [], "PrivateProfile": {}}}
     profile = device.mission_profile
     mission_config = config.mission_config or {}
     return {
         "version": config.version,
         "interval_seconds": config.interval_seconds,
+        "timezone": config.timezone,
         "updated_at": config.updated_at.isoformat(),
         "mission_config": {
             "EnabledSkills": mission_config.get("enabledSkills", ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"]),
@@ -183,6 +199,8 @@ def device_command_status(command_id: str, payload: DeviceCommandStatusPayload, 
         command.acknowledged_at = utcnow()
     if payload.status in {"success", "failed"}:
         command.completed_at = utcnow()
+    if payload.status == "success" and command.command_type in {"pause_monitoring", "resume_monitoring"}:
+        device.monitoring_enabled = command.command_type == "resume_monitoring"
     db.commit()
     return {"ok": True}
 

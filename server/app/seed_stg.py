@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from server.app.config import settings
 from server.app.db import SessionLocal
-from server.app.models import Device, DeviceConfiguration, DeviceEvent, DeviceMissionProfile
+from server.app.models import DEVICE_KIND_STG_DEMO, Device, DeviceConfiguration, DeviceEvent, DeviceMissionProfile
 from server.app.security import hash_secret, utcnow
 
 
@@ -51,7 +51,7 @@ def main() -> None:
                 id=device_id, machine_name=hostname, display_name=display,
                 token_hash=hash_secret(f"seed-token-{key}"), client_version="0.4.1",
                 last_seen_at=last_seen, registered_at=now - timedelta(days=7 + ordinal),
-                monitoring_enabled=enabled,
+                monitoring_enabled=enabled, device_kind=DEVICE_KIND_STG_DEMO,
             ))
             db.add(DeviceConfiguration(device_id=device_id, version=ordinal + 2, interval_seconds=interval,
                                        mission_config={"enabledSkills": skills}))

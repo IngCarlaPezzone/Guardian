@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["DEVICE_BOOTSTRAP_TOKEN"] = "test-bootstrap"
@@ -7,11 +8,12 @@ os.environ["GUARDIAN_SESSION_SECRET"] = "test-session-secret"
 
 from fastapi.testclient import TestClient
 
-from server.app.admin import sign_username
+from server.app.admin import ADMIN_CSS_VERSION, admin_title_with_section, sign_username
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
-from server.app.models import Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
+from server.app.metrics import dashboard_data
+from server.app.models import DEVICE_KIND_STG_DEMO, DEVICE_KIND_STG_IMPORTED_TELEMETRY, Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.security import hash_secret, utcnow
 
 
@@ -43,6 +45,68 @@ def test_register_rejects_invalid_bootstrap():
     assert response.status_code == 401
 
 
+def test_admin_css_is_served_with_a_content_version():
+    client = admin_client()
+
+    response = client.get("/admin/")
+    assert response.status_code == 200
+    assert f'/admin/static/admin.css?v={ADMIN_CSS_VERSION}' in response.text
+
+    css = client.get(f"/admin/static/admin.css?v={ADMIN_CSS_VERSION}")
+    assert css.status_code == 200
+    assert css.headers["content-type"].startswith("text/css")
+    assert ".card-grid" in css.text
+
+    icon = client.get("/admin/static/guardian.png")
+    assert icon.status_code == 200
+    assert icon.headers["content-type"].startswith("image/png")
+    assert 'rel="icon" type="image/png" href="/admin/static/guardian.png?v=' in response.text
+    assert 'class="admin-brand"' in response.text
+    assert admin_title_with_section("Dispositivos").endswith("Dispositivos")
+
+
+def test_dashboard_shows_operational_devices_and_hides_synthetic_stg_records_by_default():
+    client = admin_client()
+    operational_id = "00000000-0000-4000-8000-000000000111"
+    demo_id = "00000000-0000-4000-8000-000000000112"
+    imported_id = "00000000-0000-4000-8000-000000000113"
+    with SessionLocal() as db:
+        db.add_all([
+            Device(id=operational_id, machine_name="Operational-Test-PC", display_name="PC TEST", token_hash=hash_secret("operational-token"), client_version="0.4.4-staging-stage3", last_seen_at=utcnow()),
+            Device(id=demo_id, machine_name="STG-ONLINE-ACTIVE", display_name="Demo Online Activo", token_hash=hash_secret("demo-token"), device_kind=DEVICE_KIND_STG_DEMO),
+            Device(id=imported_id, machine_name="STG-IMPORTED-TELEMETRY-1", display_name="Telemetría importada STG 1", token_hash=hash_secret("import-token"), device_kind=DEVICE_KIND_STG_IMPORTED_TELEMETRY),
+            DeviceConfiguration(device_id=operational_id, interval_seconds=900, version=1),
+        ])
+        db.commit()
+
+    dashboard = client.get("/admin/")
+    assert dashboard.status_code == 200
+    assert "PC TEST" in dashboard.text
+    assert "Operational-Test-PC" in dashboard.text
+    assert "Demo Online Activo" not in dashboard.text
+    assert "Telemetría importada STG 1" not in dashboard.text
+    assert "Online · Activo" in dashboard.text
+    assert "Versión:" in dashboard.text
+    assert "0.4.4-staging-stage3" in dashboard.text
+    assert "Intervalo:" in dashboard.text
+    assert "15 min" in dashboard.text
+    assert "Pausar misiones" not in dashboard.text
+    assert "Reanudar misiones" not in dashboard.text
+    assert "Probar misión ahora" not in dashboard.text
+    assert f'<a class="button" href="/admin/devices/{operational_id}/missions">Configuración</a>' in dashboard.text
+    assert f'<a class="button secondary" href="/admin/devices/{operational_id}/missions">Configuración</a>' not in dashboard.text
+    assert f"/admin/devices/{operational_id}/missions" in dashboard.text
+    assert f"/admin/devices/{operational_id}/activity" in dashboard.text
+    assert f"/admin/devices/{operational_id}/metrics" in dashboard.text
+    assert 'name="release_id"' not in dashboard.text
+    assert "Distribución" not in dashboard.text
+    assert 'href="/admin/releases"' in dashboard.text
+
+    synthetic = client.get("/admin/?show_synthetic=true")
+    assert "Demo Online Activo" in synthetic.text
+    assert "Telemetría importada STG 1" in synthetic.text
+
+
 def test_device_flow_config_and_update_status():
     client = TestClient(app)
     token = register(client)
@@ -61,7 +125,7 @@ def test_device_flow_config_and_update_status():
     assert config.json()["interval_seconds"] == 900
 
     with SessionLocal() as db:
-        cfg = db.query(DeviceConfiguration).first()
+        cfg = db.query(DeviceConfiguration).filter(DeviceConfiguration.device_id == "00000000-0000-4000-8000-000000000001").one()
         cfg.interval_seconds = 120
         cfg.version += 1
         release = Release(version="0.2.1", filename="Guardian-0.2.1.zip", sha256="a" * 64, file_size=10)
@@ -122,16 +186,25 @@ def test_admin_named_pause_and_resume_commands_follow_heartbeat_state():
 
     pause = client.post(f"/admin/devices/{device_id}/commands/pause_monitoring", follow_redirects=False)
     assert pause.status_code == 303
+    assert pause.headers["location"] == f"/admin/devices/{device_id}/missions"
+    pending_page = client.get(pause.headers["location"])
+    assert "Acción pendiente. El estado se actualizará automáticamente al confirmarse en el dispositivo." in pending_page.text
+    assert "window.location.reload()" in pending_page.text
     pending_pause = client.get(f"/api/v1/devices/{device_id}/commands/pending", headers=headers).json()
     assert pending_pause["command_type"] == "pause_monitoring"
     client.post(f"/api/v1/devices/{device_id}/commands/{pending_pause['command_id']}/status", headers=headers, json={"status": "success"})
+    with SessionLocal() as db:
+        assert db.get(Device, device_id).monitoring_enabled is False
     client.post(f"/api/v1/devices/{device_id}/heartbeat", headers=headers, json={"machine_name": "Resume-PC", "client_version": "0.3.3", "effective_interval_seconds": 900, "monitoring_enabled": False})
 
     resume = client.post(f"/admin/devices/{device_id}/commands/resume_monitoring", follow_redirects=False)
     assert resume.status_code == 303
+    assert resume.headers["location"] == f"/admin/devices/{device_id}/missions"
     pending_resume = client.get(f"/api/v1/devices/{device_id}/commands/pending", headers=headers).json()
     assert pending_resume["command_type"] == "resume_monitoring"
     client.post(f"/api/v1/devices/{device_id}/commands/{pending_resume['command_id']}/status", headers=headers, json={"status": "success"})
+    with SessionLocal() as db:
+        assert db.get(Device, device_id).monitoring_enabled is True
     client.post(f"/api/v1/devices/{device_id}/heartbeat", headers=headers, json={"machine_name": "Resume-PC", "client_version": "0.3.3", "effective_interval_seconds": 900, "monitoring_enabled": True})
 
     with SessionLocal() as db:
@@ -360,7 +433,7 @@ def test_admin_cancels_only_pending_update_and_prevents_duplicate_device_command
         assert db.query(DeviceCommand).filter(DeviceCommand.device_id == device_id).count() == 1
 
 
-def test_admin_describes_pending_update_for_offline_device():
+def test_configuration_keeps_offline_quick_actions_visible_but_disabled():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-000000000089"
     with SessionLocal() as db:
@@ -371,12 +444,75 @@ def test_admin_describes_pending_update_for_offline_device():
         db.add(UpdateCommand(device_id=device_id, release_id=release.id, target_version=release.version, status="pending"))
         db.commit()
 
-    response = client.get("/admin/")
+    response = client.get(f"/admin/devices/{device_id}/missions")
     assert response.status_code == 200
-    assert "esperando que el dispositivo se conecte" in response.text
+    assert "Pausar misiones" in response.text
+    assert "Probar misión ahora" in response.text
+    assert "disabled" in response.text
+    assert 'action="/admin/devices/' + device_id + '/commands/pause_monitoring"' in response.text
 
 
-def test_admin_renders_release_notes_and_success_note_without_error_label():
+def test_configuration_quick_actions_follow_guardian_state_with_prerelease_versions():
+    client = admin_client()
+    active_id = "00000000-0000-4000-8000-000000000181"
+    paused_id = "00000000-0000-4000-8000-000000000182"
+    offline_id = "00000000-0000-4000-8000-000000000183"
+    with SessionLocal() as db:
+        db.add_all([
+            Device(id=active_id, machine_name="Quick-Active-PC", display_name="Acciones activas", token_hash=hash_secret("quick-active-token"), client_version="0.4.5-staging-stage3-iteration4", last_seen_at=utcnow(), monitoring_enabled=True),
+            Device(id=paused_id, machine_name="Quick-Paused-PC", display_name="Acciones pausadas", token_hash=hash_secret("quick-paused-token"), client_version="0.4.5-staging-stage3-iteration4", last_seen_at=utcnow(), monitoring_enabled=False),
+            Device(id=offline_id, machine_name="Quick-Offline-PC", display_name="Acciones offline", token_hash=hash_secret("quick-offline-token"), client_version="0.4.5-staging-stage3-iteration4", last_seen_at=None, monitoring_enabled=True),
+        ])
+        db.commit()
+
+    active_page = client.get(f"/admin/devices/{active_id}/missions")
+    assert "Online · Activo" in active_page.text
+    assert '<button type="submit" >Pausar misiones</button>' in active_page.text
+    assert '<button type="submit" >Probar misión ahora</button>' in active_page.text
+
+    paused_page = client.get(f"/admin/devices/{paused_id}/missions")
+    assert "Online · Pausado" in paused_page.text
+    assert '<button type="submit" >Reanudar misiones</button>' in paused_page.text
+    assert '<button type="submit" >Probar misión ahora</button>' in paused_page.text
+
+    offline_page = client.get(f"/admin/devices/{offline_id}/missions")
+    assert "Offline" in offline_page.text
+    assert '<button type="submit" disabled>Pausar misiones</button>' in offline_page.text
+    assert '<button type="submit" disabled>Probar misión ahora</button>' in offline_page.text
+    actions_start = offline_page.text.index('device-actions')
+    actions_end = offline_page.text.index('<details class="card config-card"', actions_start)
+    assert 'form="device-config-form"' not in offline_page.text[actions_start:actions_end]
+
+
+def test_configuration_update_status_uses_device_state_and_human_messages():
+    client = admin_client()
+    offline_id = "00000000-0000-4000-8000-000000000184"
+    completed_id = "00000000-0000-4000-8000-000000000185"
+    with SessionLocal() as db:
+        release = Release(version="0.4.5-staging-update-status", filename="Guardian-0.4.5-staging-update-status.zip", sha256="7" * 64, file_size=10)
+        offline = Device(id=offline_id, machine_name="Update-Offline-PC", token_hash=hash_secret("update-offline-token"), client_version="0.4.4", last_seen_at=None)
+        completed = Device(id=completed_id, machine_name="Update-Completed-PC", token_hash=hash_secret("update-completed-token"), client_version="0.4.5-staging-update-status", last_seen_at=utcnow())
+        db.add_all([release, offline, completed])
+        db.flush()
+        db.add_all([
+            UpdateCommand(device_id=offline_id, release_id=release.id, target_version=release.version, status="pending"),
+            UpdateCommand(device_id=completed_id, release_id=release.id, target_version=release.version, status="success", error_message="already running target version"),
+        ])
+        db.commit()
+
+    pending = client.get(f"/admin/devices/{offline_id}/missions")
+    assert "Estado:" in pending.text
+    assert "Offline" in pending.text
+    assert "Estado de actualización: Pendiente" in pending.text
+    assert "Pendiente — el dispositivo está offline. La actualización comenzará cuando vuelva a conectarse." in pending.text
+
+    completed = client.get(f"/admin/devices/{completed_id}/missions")
+    assert "Online · Activo" in completed.text
+    assert "Estado de actualización: Completada" in completed.text
+    assert "already running target version" not in completed.text
+
+
+def test_admin_keeps_release_details_outside_dashboard():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-000000000086"
     with SessionLocal() as db:
@@ -389,10 +525,9 @@ def test_admin_renders_release_notes_and_success_note_without_error_label():
 
     dashboard = client.get("/admin/")
     releases = client.get("/admin/releases")
-    assert "Short release description" in dashboard.text
+    assert "Short release description" not in dashboard.text
     assert "Short release description" in releases.text
-    assert "Nota" in dashboard.text
-    assert "Error</dt><dd class=\"error\">already running target version" not in dashboard.text
+    assert "Actualización success" not in dashboard.text
 
 
 def test_admin_bad_delete_confirmation_redirects_without_deleting():
@@ -431,7 +566,7 @@ def test_admin_activity_filters_device_events():
     assert response.status_code == 200
     assert "UpdateCompleted" in response.text
     assert "targetVersion" in response.text
-    assert "Hora Admin" in response.text
+    assert "Hora local" in response.text
 
 
 def test_admin_activity_includes_progressive_help_events_without_schema_change():
@@ -463,6 +598,7 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     page = client.get(f"/admin/devices/{device_id}/missions")
     assert page.status_code == 200
     assert "Comprensión funcional" in page.text
+    assert "data-tooltip" in page.text
     assert "Vocabulario de consignas" in page.text
     assert "aria-label" in page.text
 
@@ -472,6 +608,16 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
         "preferred_name": "Tomi", "first_name": "Tomás", "middle_name": "", "last_name": "Pérez", "birth_date": "2010-08-23",
     }, follow_redirects=False)
     assert response.status_code == 303
+    assert response.headers["location"] == f"/admin/devices/{device_id}/missions?saved=1"
+    saved_page = client.get(response.headers["location"])
+    assert "✓ Guardado" in saved_page.text
+    assert "data-config-section=\"device\"" in saved_page.text
+    assert "window.sessionStorage.getItem" in saved_page.text
+    assert "window.sessionStorage.removeItem" in saved_page.text
+    assert "form.addEventListener('submit'" in saved_page.text
+    assert 'id="save-confirmation"' in saved_page.text
+    assert "clearSaveConfirmation" in saved_page.text
+    assert "querySelector('summary').addEventListener('pointerdown'" in saved_page.text
 
     headers = {"Authorization": f"Bearer {token}"}
     remote = client.get(f"/api/v1/devices/{device_id}/config", headers=headers)
@@ -483,6 +629,51 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
         profile = db.get(DeviceMissionProfile, device_id)
         assert profile is not None
         assert profile.birth_date == "2010-08-23"
+
+
+def test_configuration_update_controls_are_stable_and_reuse_update_command_flow():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc8"
+    with SessionLocal() as db:
+        device = Device(id=device_id, machine_name="Configuration-Update-PC", token_hash=hash_secret("configuration-update-token"), client_version="0.4.4", last_seen_at=utcnow())
+        db.add(device)
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=1))
+        previous_active = [(release.id, release.is_active) for release in db.query(Release).all()]
+        for release in db.query(Release).all():
+            release.is_active = False
+        db.commit()
+
+    no_releases = client.get(f"/admin/devices/{device_id}/missions")
+    assert no_releases.status_code == 200
+    assert 'aria-current="page">Configuración' not in no_releases.text
+    assert "Releases disponibles" in no_releases.text
+    assert "Release objetivo" not in no_releases.text
+    assert "Dispositivo:" not in no_releases.text
+    assert "No hay releases disponibles" in no_releases.text
+    assert "No hay releases publicadas para este entorno." in no_releases.text
+    assert "<button disabled>Actualizar</button>" in no_releases.text
+    assert 'class="skill-label-tooltip" tabindex="0"' in no_releases.text
+    assert 'class="check-control skill-control" tabindex="0"' not in no_releases.text
+
+    with SessionLocal() as db:
+        for release_id, is_active in previous_active:
+            db.get(Release, release_id).is_active = is_active
+        release = Release(version="0.4.5-staging-configuration", filename="Guardian-0.4.5-staging-configuration.zip", sha256="8" * 64, file_size=10, release_notes="Release de prueba para Configuración")
+        db.add(release)
+        db.commit()
+        release_id = release.id
+
+    with_release = client.get(f"/admin/devices/{device_id}/missions")
+    assert f'value="{release_id}"' in with_release.text
+    assert "Release de prueba para Configuración" in with_release.text
+    assert '<button disabled>Actualizar</button>' not in with_release.text
+
+    response = client.post(f"/admin/devices/{device_id}/updates", data={"release_id": release_id}, follow_redirects=False)
+    assert response.status_code == 303
+    with SessionLocal() as db:
+        command = db.query(UpdateCommand).filter(UpdateCommand.device_id == device_id).one()
+        assert command.release_id == release_id
+        assert command.target_version == "0.4.5-staging-configuration"
 
 
 def test_admin_rejects_zero_enabled_mission_skills_without_saving():
@@ -503,3 +694,87 @@ def test_admin_rejects_zero_enabled_mission_skills_without_saving():
         config = db.query(DeviceConfiguration).filter(DeviceConfiguration.device_id == device_id).one()
         assert config.mission_config == {"enabledSkills": ["math.basic_operations_1.subtraction"]}
         assert config.version == 4
+
+
+def test_admin_configuration_persists_display_interval_and_timezone():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc3"
+    token = "timezone-config-token"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Timezone-PC", token_hash=hash_secret(token), client_version="0.4.1", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=1))
+        db.commit()
+
+    response = client.post(f"/admin/devices/{device_id}/config", data={
+        "display_name": "PC de prueba", "interval_minutes": "20", "timezone_name": "America/Argentina/Buenos_Aires",
+        "missions_submitted": "1", "enabled_skills": ["math.basic_operations_1.addition"],
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    remote = client.get(f"/api/v1/devices/{device_id}/config", headers={"Authorization": f"Bearer {token}"})
+    assert remote.status_code == 200
+    assert remote.json()["timezone"] == "UTC"
+    with SessionLocal() as db:
+        device = db.get(Device, device_id)
+        assert device.display_name == "PC de prueba"
+        assert device.configuration.interval_seconds == 1200
+
+
+def test_activity_uses_device_timezone_and_hides_technical_events_by_default():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc4"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Activity-Timezone-PC", token_hash=hash_secret("activity-timezone-token"), client_version="0.4.1", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="America/Argentina/Buenos_Aires", version=1))
+        db.add_all([
+            DeviceEvent(event_id="30000000-0000-4000-8000-000000000001", device_id=device_id, occurred_at=datetime(2026, 8, 23, 3, 30, tzinfo=timezone.utc), received_at=utcnow(), event_type="MissionSolved", payload={"mission_id": "activity-1", "category_id": "math", "level_id": "basic_operations_1", "skill_id": "addition", "attempt": 1}),
+            DeviceEvent(event_id="30000000-0000-4000-8000-000000000002", device_id=device_id, occurred_at=datetime(2026, 8, 23, 3, 31, tzinfo=timezone.utc), received_at=utcnow(), event_type="HeartbeatSent", payload={}),
+        ])
+        db.commit()
+
+    default = client.get(f"/admin/devices/{device_id}/activity?period=all")
+    technical = client.get(f"/admin/devices/{device_id}/activity?period=all&technical=true")
+    assert default.status_code == 200
+    assert "America/Argentina/Buenos_Aires" in default.text
+    assert "23/08/2026" in default.text
+    assert "HeartbeatSent" not in default.text
+    assert "HeartbeatSent" in technical.text
+
+
+def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc5"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Metrics-PC", token_hash=hash_secret("metrics-token"), client_version="0.4.1", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="UTC", version=1))
+        events = [
+            ("40000000-0000-4000-8000-000000000001", "MissionStarted", "m-first", 1, "math", "basic_operations_1", "addition", "a1", datetime(2026, 8, 20, 10, 0, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000002", "MissionSolved", "m-first", 1, "math", "basic_operations_1", "addition", "a1", datetime(2026, 8, 20, 10, 0, 12, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000003", "MissionStarted", "m-third", 1, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000004", "MissionFailed", "m-third", 1, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, 2, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000005", "MissionFailed", "m-third", 2, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, 4, tzinfo=timezone.utc)),
+            # Reintento retransmitido: no debe aumentar la cantidad de intentos.
+            ("40000000-0000-4000-8000-000000000006", "MissionFailed", "m-third", 2, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, 5, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000007", "MissionSolved", "m-third", 3, "comprehension", "functional_1", "calendar", "c1", datetime(2026, 8, 21, 10, 0, 8, tzinfo=timezone.utc)),
+            ("40000000-0000-4000-8000-000000000008", "MissionSolved", "legacy-mission", 1, "math", "basic_operations_1", "subtraction", "s1", datetime(2026, 8, 22, 10, 0, tzinfo=timezone.utc)),
+        ]
+        for event_id, event_type, mission_id, attempt, category, level, skill, variant, occurred_at in events:
+            payload = {"missionId": mission_id, "attempt": attempt, "category_id": category, "level_id": level, "skill_id": skill, "variant_id": variant} if mission_id == "legacy-mission" else {"mission_id": mission_id, "attempt": attempt, "category_id": category, "level_id": level, "skill_id": skill, "variant_id": variant}
+            db.add(DeviceEvent(event_id=event_id, device_id=device_id, occurred_at=occurred_at, received_at=utcnow(), event_type=event_type, payload=payload))
+        db.commit()
+
+    with SessionLocal() as db:
+        data = dashboard_data(db, db.get(Device, device_id), "all", None, None, None, None, None)
+    assert data["summary"]["missions"] == 3
+    assert data["summary"]["first_attempt"] == 2
+    assert data["summary"]["third_plus"] == 1
+    assert data["summary"]["total_attempts"] == 5
+    assert data["summary"]["median_seconds"] == 10.0
+    assert {row["label"] for row in data["rows"]} == {"Matemática", "Comprensión"}
+
+    response = client.get(f"/admin/devices/{device_id}/metrics?period=all")
+    assert response.status_code == 200
+    assert "Misiones resueltas" in response.text
+    assert "Comprensión" in response.text
+    skill = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1&skill=calendar")
+    assert skill.status_code == 200
+    assert "Preguntas o consignas" not in skill.text
