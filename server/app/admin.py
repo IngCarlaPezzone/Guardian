@@ -17,7 +17,7 @@ from server.app.db import get_db
 from server.app.models import DEVICE_KIND_OPERATIONAL, AdminUser, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.metrics import CATALOG, dashboard_data, device_timezone, resolved_period
 from server.app.security import VALID_DEVICE_COMMAND_TYPES, current_admin, utcnow, valid_interval, valid_semver, verify_secret
-from server.app.update_queue import active_update, cleanup_update_queue, command_last_change, latest_update_by_device
+from server.app.update_queue import ACTIVE_UPDATE_STATUSES, active_update, cleanup_update_queue, command_last_change, latest_update_by_device
 
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -197,6 +197,9 @@ def update_view_model(command: UpdateCommand | None, guardian_state: str):
     contextual_message = None
     if command.status == "pending" and guardian_state == "offline":
         contextual_message = "Pendiente — el dispositivo está offline. La actualización comenzará cuando vuelva a conectarse."
+    elif command.status == "installing" and guardian_state == "offline":
+        labels["installing"] = "Reiniciando / esperando reconexión"
+        contextual_message = "La instalación terminó y se espera que el dispositivo vuelva a conectarse."
     return {
         "command": command,
         "last_change": command_last_change(command),
@@ -242,14 +245,30 @@ def valid_timezone(value: str) -> str | None:
     return name
 
 
-def render_mission_config(request: Request, device: Device, db: Session, selected: list[str] | None = None, error: str | None = None, saved: bool = False, status_code: int = 200):
+def render_mission_config(request: Request, device: Device, db: Session, selected: list[str] | None = None, error: str | None = None, saved: bool = False, release_id: str | None = None, status_code: int = 200):
     if selected is None:
         selected = ((device.configuration.mission_config if device.configuration else {}) or {}).get(
             "enabledSkills",
             ["math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication"],
         )
     releases = db.query(Release).filter(Release.is_active.is_(True)).order_by(Release.created_at.desc()).all()
-    update_command = db.query(UpdateCommand).filter(UpdateCommand.device_id == device.id).order_by(UpdateCommand.requested_at.desc()).first()
+    active_update_command = active_update(db, device.id)
+    selected_release = next((release for release in releases if release.id == release_id), None)
+    if selected_release is None and active_update_command is not None:
+        selected_release = active_update_command.release
+    elif selected_release is None and releases:
+        selected_release = releases[0]
+    selected_update_command = (
+        active_update_command
+        if selected_release is not None and active_update_command is not None and active_update_command.release_id == selected_release.id
+        else None
+    )
+    history_command = (
+        db.query(UpdateCommand)
+        .filter(UpdateCommand.device_id == device.id, ~UpdateCommand.status.in_(ACTIVE_UPDATE_STATUSES))
+        .order_by(UpdateCommand.completed_at.desc(), UpdateCommand.requested_at.desc())
+        .first()
+    )
     guardian_state = device_guardian_state(device)
     pending_command = active_device_command(db, device.id)
     return templates.TemplateResponse("missions.html", {
@@ -261,12 +280,15 @@ def render_mission_config(request: Request, device: Device, db: Session, selecte
         "error": error,
         "saved": saved,
         "releases": releases,
+        "selected_release": selected_release,
+        "selected_release_is_installed": selected_release is not None and selected_release.version == device.client_version,
         "guardian_state": guardian_state,
         "guardian_state_label": {"active": "Online · Activo", "paused": "Online · Pausado", "offline": "Offline"}[guardian_state],
         "quick_actions_enabled": quick_actions_enabled(device, pending_command),
         "pending_device_command": pending_command,
-        "update": update_view_model(update_command, guardian_state),
-        "update_enabled": active_update(db, device.id) is None,
+        "update": update_view_model(selected_update_command, guardian_state),
+        "update_history": update_view_model(history_command, guardian_state),
+        "update_enabled": active_update_command is None and selected_release is not None and selected_release.version != device.client_version,
     }, status_code=status_code)
 
 
@@ -471,11 +493,11 @@ def update_device_config(device_id: str, request: Request, display_name: str = F
 
 
 @router.get("/devices/{device_id}/missions", response_class=HTMLResponse)
-def mission_config_page(device_id: str, request: Request, saved: bool = Query(False), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
+def mission_config_page(device_id: str, request: Request, saved: bool = Query(False), release_id: str | None = Query(None), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
-    return render_mission_config(request, device, db, saved=saved)
+    return render_mission_config(request, device, db, saved=saved, release_id=release_id)
 
 
 @router.post("/devices/{device_id}/updates")
@@ -488,13 +510,13 @@ def request_update(device_id: str, release_id: str = Form(...), db: Session = De
     db.flush()
     if release.version == device.client_version:
         db.commit()
-        return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
+        return RedirectResponse(f"/admin/devices/{device.id}/missions?release_id={release.id}", status_code=303)
     if active_update(db, device.id) is not None:
         db.commit()
-        return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
+        return RedirectResponse(f"/admin/devices/{device.id}/missions?release_id={release.id}", status_code=303)
     db.add(UpdateCommand(device_id=device.id, release_id=release.id, target_version=release.version, status="pending"))
     db.commit()
-    return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
+    return RedirectResponse(f"/admin/devices/{device.id}/missions?release_id={release.id}", status_code=303)
 
 
 @router.post("/devices/{device_id}/updates/{command_id}/cancel")

@@ -503,13 +503,60 @@ def test_configuration_update_status_uses_device_state_and_human_messages():
     pending = client.get(f"/admin/devices/{offline_id}/missions")
     assert "Estado:" in pending.text
     assert "Offline" in pending.text
-    assert "Estado de actualización: Pendiente" in pending.text
+    assert "Estado actual de actualización: Pendiente" in pending.text
     assert "Pendiente — el dispositivo está offline. La actualización comenzará cuando vuelva a conectarse." in pending.text
+    assert "window.setTimeout(function () { window.location.reload(); }, 3000);" in pending.text
 
     completed = client.get(f"/admin/devices/{completed_id}/missions")
     assert "Online · Activo" in completed.text
-    assert "Estado de actualización: Completada" in completed.text
+    assert "Esta release ya está instalada." in completed.text
+    assert "Estado actual de actualización" not in completed.text
+    assert "Última actualización registrada: Completada" in completed.text
     assert "already running target version" not in completed.text
+    assert "window.setTimeout(function () { window.location.reload(); }, 3000);" not in completed.text
+
+
+def test_configuration_update_state_is_scoped_to_selected_release():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-000000000186"
+    with SessionLocal() as db:
+        device = Device(id=device_id, machine_name="Update-State-PC", token_hash=hash_secret("update-state-token"), client_version="9.8.51", last_seen_at=utcnow())
+        installed = Release(version="9.8.51", filename="Guardian-9.8.51.zip", sha256="9" * 64, file_size=10)
+        next_release = Release(version="9.8.52", filename="Guardian-9.8.52.zip", sha256="a" * 64, file_size=10)
+        historical = Release(version="9.8.50", filename="Guardian-9.8.50.zip", sha256="b" * 64, file_size=10)
+        db.add_all([device, installed, next_release, historical])
+        db.flush()
+        db.add(UpdateCommand(device_id=device_id, release_id=historical.id, target_version=historical.version, status="success"))
+        db.commit()
+        installed_id = installed.id
+        next_release_id = next_release.id
+
+    current_page = client.get(f"/admin/devices/{device_id}/missions?release_id={installed_id}")
+    assert "Esta release ya está instalada." in current_page.text
+    assert '<button id="update-button" disabled>Actualizar</button>' in current_page.text
+    assert "Estado actual de actualización" not in current_page.text
+    assert "Última actualización registrada: Completada" in current_page.text
+    assert "Versión destino: 9.8.50" in current_page.text
+
+    same_release = client.post(f"/admin/devices/{device_id}/updates", data={"release_id": installed_id}, follow_redirects=False)
+    assert same_release.headers["location"] == f"/admin/devices/{device_id}/missions?release_id={installed_id}"
+    with SessionLocal() as db:
+        assert db.query(UpdateCommand).filter(UpdateCommand.device_id == device_id).count() == 1
+
+    with SessionLocal() as db:
+        db.add(UpdateCommand(device_id=device_id, release_id=next_release_id, target_version="9.8.52", status="downloading"))
+        db.commit()
+
+    other_release_page = client.get(f"/admin/devices/{device_id}/missions?release_id={installed_id}")
+    assert "Estado actual de actualización" not in other_release_page.text
+    assert "window.setTimeout(function () { window.location.reload(); }, 3000);" not in other_release_page.text
+
+    active_page = client.get(f"/admin/devices/{device_id}/missions?release_id={next_release_id}")
+    assert 'data-update-active="true"' in active_page.text
+    assert "Estado actual de actualización: Descargando" in active_page.text
+    assert "Versión destino: 9.8.52" in active_page.text
+    assert "Última actualización registrada: Completada" in active_page.text
+    assert "window.setTimeout(function () { window.location.reload(); }, 3000);" in active_page.text
 
 
 def test_admin_keeps_release_details_outside_dashboard():
