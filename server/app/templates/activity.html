@@ -1,1 +1,22 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Actividad - {{ admin_title }}</title><link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}"></head><body><header><h1>{{ admin_title }}</h1><nav class="header-actions"><a class="button secondary" href="/admin/">Dispositivos</a><a class="button secondary" href="/admin/devices/{{ device.id }}/missions">Configuración</a><a class="button secondary" href="/admin/devices/{{ device.id }}/metrics">Métricas</a></nav></header><main><section><div class="page-heading"><div><p class="eyebrow">{{ device.machine_name }}</p><h2>Actividad — {{ device.display_name or device.machine_name }}</h2></div></div><form method="get" class="card filters"><label>Desde<input name="start" type="date" value="{{ start }}"></label><label>Hasta<input name="end" type="date" value="{{ end }}"></label><label>Categoría<select name="group">{% for key,label in groups %}<option value="{{ key }}" {{ 'selected' if group == key else '' }}>{{ label }}</option>{% endfor %}</select></label><label class="filter-toggle"><input name="technical" type="checkbox" value="true" {{ 'checked' if technical else '' }}> Mostrar eventos técnicos</label><button>Filtrar</button></form>{% if range_error %}<p class="error" role="alert">{{ range_error }}</p>{% endif %}<p class="muted">Hora local: {{ timezone_label }}</p><div class="event-table-wrap"><table><thead><tr><th>Fecha</th><th>Hora</th><th>Evento</th><th>Versión</th><th>Resumen</th></tr></thead><tbody>{% for row in events %}{% set event=row.event %}<tr><td>{{ row.occurred_local.strftime('%d/%m/%Y') }}</td><td>{{ row.occurred_local.strftime('%H:%M:%S') }}</td><td><strong>{{ row.label }}</strong><span class="event-type">{{ event.event_type }}</span></td><td>{{ event.client_version or '—' }}</td><td>{{ row.summary }}</td></tr>{% else %}<tr><td colspan="5" class="muted">No hay eventos para estos filtros.</td></tr>{% endfor %}</tbody></table></div></section></main></body></html>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Actividad - {{ admin_title }}</title>
+  <link rel="icon" type="image/png" href="/admin/static/guardian.png">
+  <link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}">
+</head>
+<body>
+  <header><h1 class="admin-brand"><img src="/admin/static/guardian.png" alt="" title="{{ admin_title }}"> {{ admin_title }}</h1><nav class="header-actions"><a class="button secondary" href="/admin/">Dispositivos</a><a class="button secondary" href="/admin/devices/{{ device.id }}/missions">Configuración</a><a class="button secondary" href="/admin/devices/{{ device.id }}/metrics">Métricas</a></nav></header>
+  <main>
+    <section>
+      <div class="page-heading"><div><p class="eyebrow">{{ device.machine_name }}</p><h2>Actividad — {{ device.display_name or device.machine_name }}</h2></div></div>
+      <form method="get" class="card filters"><label>Desde<input name="start" type="date" value="{{ start }}"></label><label>Hasta<input name="end" type="date" value="{{ end }}"></label><label>Categoría<select name="group">{% for key,label in groups %}<option value="{{ key }}" {{ 'selected' if group == key else '' }}>{{ label }}</option>{% endfor %}</select></label><label class="filter-toggle"><input name="technical" type="checkbox" value="true" {{ 'checked' if technical else '' }}> Mostrar eventos técnicos</label><button>Filtrar</button></form>
+      {% if range_error %}<p class="error" role="alert">{{ range_error }}</p>{% endif %}
+      <p class="muted">Hora local: {{ timezone_label }}</p>
+      <div class="event-table-wrap"><table><thead><tr><th>Fecha</th><th>Hora</th><th>Evento</th><th>Versión</th><th>Resumen</th></tr></thead><tbody>{% for row in events %}{% set event=row.event %}<tr><td>{{ row.occurred_local.strftime('%d/%m/%Y') }}</td><td>{{ row.occurred_local.strftime('%H:%M:%S') }}</td><td><strong>{{ row.label }}</strong><span class="event-type">{{ event.event_type }}</span></td><td>{{ event.client_version or '—' }}</td><td>{{ row.summary }}</td></tr>{% else %}<tr><td colspan="5" class="muted">No hay eventos para estos filtros.</td></tr>{% endfor %}</tbody></table></div>
+    </section>
+  </main>
+</body>
+</html>

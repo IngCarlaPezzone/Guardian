@@ -232,7 +232,7 @@ def valid_timezone(value: str) -> str | None:
     return name
 
 
-def render_mission_config(request: Request, device: Device, db: Session, selected: list[str] | None = None, error: str | None = None, status_code: int = 200):
+def render_mission_config(request: Request, device: Device, db: Session, selected: list[str] | None = None, error: str | None = None, saved: bool = False, status_code: int = 200):
     if selected is None:
         selected = ((device.configuration.mission_config if device.configuration else {}) or {}).get(
             "enabledSkills",
@@ -249,6 +249,7 @@ def render_mission_config(request: Request, device: Device, db: Session, selecte
         "selected": selected,
         "profile": device.mission_profile,
         "error": error,
+        "saved": saved,
         "releases": releases,
         "guardian_state": guardian_state,
         "guardian_state_label": {"active": "Online · Activo", "paused": "Online · Pausado", "offline": "Offline"}[guardian_state],
@@ -456,15 +457,15 @@ def update_device_config(device_id: str, request: Request, display_name: str = F
     if changed:
         config.version += 1
     db.commit()
-    return RedirectResponse(f"/admin/devices/{device.id}/missions", status_code=303)
+    return RedirectResponse(f"/admin/devices/{device.id}/missions?saved=1", status_code=303)
 
 
 @router.get("/devices/{device_id}/missions", response_class=HTMLResponse)
-def mission_config_page(device_id: str, request: Request, db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
+def mission_config_page(device_id: str, request: Request, saved: bool = Query(False), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
-    return render_mission_config(request, device, db)
+    return render_mission_config(request, device, db, saved=saved)
 
 
 @router.post("/devices/{device_id}/updates")

@@ -57,6 +57,12 @@ def test_admin_css_is_served_with_a_content_version():
     assert css.headers["content-type"].startswith("text/css")
     assert ".card-grid" in css.text
 
+    icon = client.get("/admin/static/guardian.png")
+    assert icon.status_code == 200
+    assert icon.headers["content-type"].startswith("image/png")
+    assert 'rel="icon" type="image/png" href="/admin/static/guardian.png"' in response.text
+    assert 'class="admin-brand"' in response.text
+
 
 def test_dashboard_shows_operational_devices_and_hides_synthetic_stg_records_by_default():
     client = admin_client()
@@ -599,6 +605,11 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
         "preferred_name": "Tomi", "first_name": "Tomás", "middle_name": "", "last_name": "Pérez", "birth_date": "2010-08-23",
     }, follow_redirects=False)
     assert response.status_code == 303
+    assert response.headers["location"] == f"/admin/devices/{device_id}/missions?saved=1"
+    saved_page = client.get(response.headers["location"])
+    assert "✓ Guardado" in saved_page.text
+    assert "data-config-section=\"device\"" in saved_page.text
+    assert "window.localStorage.getItem" in saved_page.text
 
     headers = {"Authorization": f"Bearer {token}"}
     remote = client.get(f"/api/v1/devices/{device_id}/config", headers=headers)
@@ -758,5 +769,4 @@ def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
     assert "Comprensión" in response.text
     skill = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1&skill=calendar")
     assert skill.status_code == 200
-    assert "Preguntas o consignas (1)" in skill.text
-    assert "C1" in skill.text
+    assert "Preguntas o consignas" not in skill.text
