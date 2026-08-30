@@ -113,7 +113,7 @@
         control.addEventListener('change', clearSaveConfirmation);
       });
       sections.forEach(function (section) {
-        section.addEventListener('toggle', clearSaveConfirmation, { once: true });
+        section.querySelector('summary').addEventListener('pointerdown', clearSaveConfirmation, { once: true });
       });
     }());
     document.querySelectorAll('.mission-level').forEach(function (level) {
