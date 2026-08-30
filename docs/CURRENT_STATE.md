@@ -140,15 +140,15 @@ La importación sanitizada también fue validada manualmente contra PROD: la pri
 
 Nunca se utiliza una feature branch sobre PROD para una vista previa visual o funcional.
 
-## Stage 3 — Admin y métricas (feature en desarrollo)
+## Stage 3 — Admin y métricas (preparada para promoción; aún no está en PROD)
 
-La rama `feature/stage3-admin-metrics` incorpora Stage 3A/3B y **no está en PROD**. Debe validarse exclusivamente en STG antes de cualquier promoción.
+La rama `feature/stage3-admin-metrics` incorpora Stage 3A/3B y **no está en PROD**. La validación STG está completa; la promoción propuesta es la versión `0.4.5`, pendiente de backup, merge, despliegue y validación posterior en PC TEST.
 
 - Admin con cards compactas: `display_name` principal, hostname secundario, estado operativo y acciones remotas agrupadas.
-- Configuración unificada de nombre visible, intervalo, zona horaria IANA, skills y perfil privado.
+- Configuración unificada de nombre visible, intervalo, skills y perfil privado; la zona horaria es técnica, automática y no editable en Admin.
 - Activity con fecha y hora local del dispositivo, filtros de período, categorías humanas, eventos técnicos opcionales y JSON desplegable.
 - Métricas agregadas server-side por `mission_id`, con compatibilidad `missionId`, reintentos deduplicados, drill-down Global → Categoría → Nivel → Skill y variantes bajo demanda.
-- La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC.
+- La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC. El cliente `0.4.5` reporta su offset local en registro y heartbeat; los clientes `0.4.4` compatibles conservan `UTC` hasta actualizarse.
 - El Dashboard muestra por defecto sólo dispositivos `operational`. La migración `0006_device_kind` clasifica explícitamente fixtures `stg_demo` e importaciones `stg_imported_telemetry`, sin deduplicar por hostname; esos registros siguen disponibles para Activity/Métricas y pueden revisarse de forma deliberada en `/admin/?show_synthetic=true`.
 
-La implementación no cambia categorías, niveles ni skills educativas, ni el comportamiento validado de LockWindow, RemoteConfig, perfil privado, rotación o updater. No crear releases de Stage 3 en PROD; durante su validación usar únicamente releases con sufijo STG, según el flujo anterior.
+La implementación no cambia categorías, niveles ni skills educativas, ni el comportamiento validado de LockWindow, RemoteConfig, perfil privado, rotación o updater. No crear ni seleccionar todavía releases `0.4.5` en PROD: el despliegue de servidor/Admin y el rollout del cliente se realizarán sólo tras la aprobación explícita de promoción.
