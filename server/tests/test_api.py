@@ -613,6 +613,8 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     assert "window.sessionStorage.getItem" in saved_page.text
     assert "window.sessionStorage.removeItem" in saved_page.text
     assert "form.addEventListener('submit'" in saved_page.text
+    assert 'id="save-confirmation"' in saved_page.text
+    assert "clearSaveConfirmation" in saved_page.text
 
     headers = {"Authorization": f"Bearer {token}"}
     remote = client.get(f"/api/v1/devices/{device_id}/config", headers=headers)
