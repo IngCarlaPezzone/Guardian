@@ -14,6 +14,8 @@ namespace Guardian
         public string SkillId { get; set; }
         public string VariantId { get; set; }
         public List<string> AcceptedAnswers { get; set; }
+        // Se limita a misiones de fecha: permite comparar la preposición opcional sin relajar otros textos.
+        public bool AcceptsNaturalLanguageDate { get; set; }
         public List<MissionHelpStep> HelpSteps { get; set; }
         // Contexto local para resolver textos dinámicos. Nunca se incluye en telemetría.
         public MissionContentContext ContentContext { get; set; }
@@ -110,12 +112,20 @@ namespace Guardian
 
     public static class MissionTelemetry
     {
-        public static Dictionary<string, object> Payload(Mission m, int attempt, int maxHelpLevel, int helpRequestsCount, bool hadOrthographicError, int writingCorrectionCount, bool writingAnswerRevealed)
+        public static Dictionary<string, object> Payload(Mission m, int attempt, int maxHelpLevel, int helpRequestsCount, bool hadOrthographicError, int writingCorrectionCount, bool writingAnswerRevealed, string answer, string failureReason)
         {
-            return new Dictionary<string, object> { { "mission_id", m.Id }, { "missionId", m.Id }, { "category_id", m.CategoryId }, { "level_id", m.LevelId }, { "skill_level_id", m.LevelId }, { "skill_id", m.SkillId }, { "variant_id", m.VariantId }, { "attempt", attempt }, { "max_help_level", maxHelpLevel }, { "help_requests_count", helpRequestsCount }, { "had_orthographic_error", hadOrthographicError }, { "writing_correction_count", writingCorrectionCount }, { "writing_answer_revealed", writingAnswerRevealed } };
+            var payload = new Dictionary<string, object> { { "mission_id", m.Id }, { "missionId", m.Id }, { "category_id", m.CategoryId }, { "level_id", m.LevelId }, { "skill_level_id", m.LevelId }, { "skill_id", m.SkillId }, { "variant_id", m.VariantId }, { "attempt", attempt }, { "max_help_level", maxHelpLevel }, { "help_requests_count", helpRequestsCount }, { "had_orthographic_error", hadOrthographicError }, { "writing_correction_count", writingCorrectionCount }, { "writing_answer_revealed", writingAnswerRevealed } };
+            if (answer != null)
+            {
+                payload["answer"] = answer;
+                payload["helpLevel"] = maxHelpLevel;
+            }
+            if (failureReason != null) payload["failureReason"] = failureReason;
+            return payload;
         }
 
-        public static Dictionary<string, object> Payload(Mission m, int attempt) { return Payload(m, attempt, 0, 0, false, 0, false); }
+        public static Dictionary<string, object> Payload(Mission m, int attempt, int maxHelpLevel, int helpRequestsCount, bool hadOrthographicError, int writingCorrectionCount, bool writingAnswerRevealed) { return Payload(m, attempt, maxHelpLevel, helpRequestsCount, hadOrthographicError, writingCorrectionCount, writingAnswerRevealed, null, null); }
+        public static Dictionary<string, object> Payload(Mission m, int attempt) { return Payload(m, attempt, 0, 0, false, 0, false, null, null); }
     }
 
     public sealed class MissionUnavailableDeduplicator
@@ -205,6 +215,12 @@ namespace Guardian
             if (cat == "comprehension") mission.HelpSteps = MissionContent.HelpSteps(mission);
             return mission;
         }
+        private static Mission DateM(string cat, string level, string skill, string variant, string prompt, params string[] answers)
+        {
+            var mission = M(cat, level, skill, variant, prompt, answers);
+            mission.AcceptsNaturalLanguageDate = true;
+            return mission;
+        }
         private Mission MathMission(string key, Random r)
         {
             var skill = key.Substring(key.LastIndexOf('.') + 1); int a, b, answer; string symbol;
@@ -221,9 +237,9 @@ namespace Guardian
         private Mission AgeBirth(PrivateMissionProfile p, Dictionary<string, string> last, Random r)
         {
             var birth = ParseDate(p.BirthDate).Value; var today = GuardianClock.TodayLocal; var age = today.Year - birth.Year; if (birth > today.AddYears(-age)) age--;
-            return Choose(new List<Mission> { M("comprehension","functional_1","age_birth","age_ask_1","¿Cuántos años tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_ask_2","¿Qué edad tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_field","Edad:", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","birth_year_ask","¿En qué año naciste?",birth.Year.ToString()), M("comprehension","functional_1","age_birth","birth_year_field","Año de nacimiento:",birth.Year.ToString()), M("comprehension","functional_1","age_birth","birthday_ask","¿Cuándo es tu cumpleaños?", DateAnswers(birth, false).ToArray()), M("comprehension","functional_1","age_birth","birth_date_ask","¿Cuál es tu fecha de nacimiento?", DateAnswers(birth, true).ToArray()) }, last, "comprehension.functional_1.age_birth", r);
+            return Choose(new List<Mission> { M("comprehension","functional_1","age_birth","age_ask_1","¿Cuántos años tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_ask_2","¿Qué edad tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_field","Edad:", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","birth_year_ask","¿En qué año naciste?",birth.Year.ToString()), M("comprehension","functional_1","age_birth","birth_year_field","Año de nacimiento:",birth.Year.ToString()), DateM("comprehension","functional_1","age_birth","birthday_ask","¿Cuándo es tu cumpleaños?", DateAnswers(birth, false).ToArray()), DateM("comprehension","functional_1","age_birth","birth_date_ask","¿Cuál es tu fecha de nacimiento?", DateAnswers(birth, true).ToArray()) }, last, "comprehension.functional_1.age_birth", r);
         }
-        private Mission CurrentDate(Dictionary<string, string> last, Random r) { var d = GuardianClock.TodayLocal; return Choose(new List<Mission> { M("comprehension","functional_1","current_date","current_year_ask_1","¿En qué año estamos?",d.Year.ToString()), M("comprehension","functional_1","current_date","current_year_ask_2","¿Qué año es?",d.Year.ToString()), M("comprehension","functional_1","current_date","current_month_ask_1","¿En qué mes estamos?",Months[d.Month-1]), M("comprehension","functional_1","current_date","current_month_ask_2","¿Qué mes es?",Months[d.Month-1]), M("comprehension","functional_1","current_date","current_weekday","¿Qué día de la semana es hoy?",Weekdays[(int)d.DayOfWeek]), M("comprehension","functional_1","current_date","current_day_of_month","¿Qué día del mes es hoy?",d.Day.ToString()), M("comprehension","functional_1","current_date","current_full_date","¿Qué fecha es hoy?",DateAnswers(d,true).ToArray()) },last,"comprehension.functional_1.current_date",r); }
+        private Mission CurrentDate(Dictionary<string, string> last, Random r) { var d = GuardianClock.TodayLocal; return Choose(new List<Mission> { M("comprehension","functional_1","current_date","current_year_ask_1","¿En qué año estamos?",d.Year.ToString()), M("comprehension","functional_1","current_date","current_year_ask_2","¿Qué año es?",d.Year.ToString()), M("comprehension","functional_1","current_date","current_month_ask_1","¿En qué mes estamos?",Months[d.Month-1]), M("comprehension","functional_1","current_date","current_month_ask_2","¿Qué mes es?",Months[d.Month-1]), M("comprehension","functional_1","current_date","current_weekday","¿Qué día de la semana es hoy?",Weekdays[(int)d.DayOfWeek]), M("comprehension","functional_1","current_date","current_day_of_month","¿Qué día del mes es hoy?",d.Day.ToString()), DateM("comprehension","functional_1","current_date","current_full_date","¿Qué fecha es hoy?",DateAnswers(d,true).ToArray()) },last,"comprehension.functional_1.current_date",r); }
         private Mission Temporal(Dictionary<string, string> last, Random r) { var d = GuardianClock.TodayLocal; var context = new MissionContentContext { TodayWeekday = Weekdays[(int)d.DayOfWeek], CurrentMonth = Months[d.Month-1] }; return Choose(new List<Mission> { M("comprehension","functional_1","temporal_relations","tomorrow_weekday","¿Qué día de la semana es mañana?",context,Weekdays[(int)d.AddDays(1).DayOfWeek]), M("comprehension","functional_1","temporal_relations","yesterday_weekday","¿Qué día de la semana fue ayer?",context,Weekdays[(int)d.AddDays(-1).DayOfWeek]), M("comprehension","functional_1","temporal_relations","next_month_ask_1","¿Cuál es el mes que viene?",context,Months[d.AddMonths(1).Month-1]), M("comprehension","functional_1","temporal_relations","previous_month","¿Cuál fue el mes pasado?",context,Months[d.AddMonths(-1).Month-1]) },last,"comprehension.functional_1.temporal_relations",r); }
         private Mission Calendar(Dictionary<string, string> last, Random r) { var day=r.Next(7); var month=r.Next(12); return Choose(new List<Mission> { M("comprehension","functional_1","calendar","days_in_week","¿Cuántos días tiene una semana?",NumberAnswers(7).ToArray()), M("comprehension","functional_1","calendar","months_in_year","¿Cuántos meses tiene un año?",NumberAnswers(12).ToArray()), M("comprehension","functional_1","calendar","weekday_after","¿Qué día viene después del "+Weekdays[day]+"?",new MissionContentContext { Value = Weekdays[day] },Weekdays[(day+1)%7]), M("comprehension","functional_1","calendar","weekday_before","¿Qué día viene antes del "+Weekdays[day]+"?",new MissionContentContext { Value = Weekdays[day] },Weekdays[(day+6)%7]), M("comprehension","functional_1","calendar","month_after","¿Qué mes viene después de "+Months[month]+"?",new MissionContentContext { Value = Months[month] },Months[(month+1)%12]), M("comprehension","functional_1","calendar","month_before","¿Qué mes viene antes de "+Months[month]+"?",new MissionContentContext { Value = Months[month] },Months[(month+11)%12]) },last,"comprehension.functional_1.calendar",r); }
         private Mission Season(Dictionary<string, string> last, Random r) { var s=r.Next(4); return Choose(new List<Mission> { M("comprehension","functional_1","seasons","season_cold","¿Cuál es la estación del año en la que hace mucho frío?","invierno"), M("comprehension","functional_1","seasons","season_hot","¿Cuál es la estación del año en la que hace mucho calor?","verano"), M("comprehension","functional_1","seasons","season_falling_leaves","¿En qué estación se caen muchas hojas de los árboles?","otoño"), M("comprehension","functional_1","seasons","season_flowers","¿En qué estación suelen crecer muchas flores?","primavera"), M("comprehension","functional_1","seasons","season_after","¿Qué estación viene después del "+Seasons[s]+"?",new MissionContentContext { Value = Seasons[s] },Seasons[(s+1)%4]) },last,"comprehension.functional_1.seasons",r); }
