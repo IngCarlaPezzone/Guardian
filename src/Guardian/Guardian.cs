@@ -2297,13 +2297,14 @@ namespace Guardian
 
         private void CheckAnswer()
         {
-            var analysis = MissionValidator.Analyze(_answerBox.Text, _mission);
+            var originalAnswer = _answerBox.Text;
+            var analysis = MissionValidator.Analyze(originalAnswer, _mission);
             var result = analysis.Result;
             if (result == MissionAnswerResult.Invalid)
             {
                 _feedbackIcon.Visibility = Visibility.Collapsed;
                 _feedback.Text = "Revis\u00e1 la respuesta e intent\u00e1 de nuevo.";
-                var invalidPayload = TelemetryPayload();
+                var invalidPayload = TelemetryPayload(originalAnswer, "invalid_input");
                 invalidPayload["reason"] = "invalid_input";
                 _logger.Log("MissionFailed", invalidPayload);
                 _attempt++;
@@ -2319,7 +2320,7 @@ namespace Guardian
                 if (stage < 3) _feedback.Text = MissionContent.WritingFeedback(MissionValidator.DescribeDifference(_answerBox.Text, analysis.MatchedAcceptedAnswer));
                 else { _writingAnswerRevealed = true; _feedback.Text = MissionContent.WritingAnswerRevealed(analysis.MatchedAcceptedAnswer); }
                 _answerBox.SelectAll();
-                var spellingPayload = TelemetryPayload(); spellingPayload["reason"] = "orthographic_error";
+                var spellingPayload = TelemetryPayload(originalAnswer, "orthographic_error"); spellingPayload["reason"] = "orthographic_error";
                 _logger.Log("MissionFailed", spellingPayload);
                 var hintPayload = TelemetryPayload(); hintPayload["writing_hint_stage"] = stage;
                 _logger.Log("MissionWritingHintShown", hintPayload);
@@ -2333,18 +2334,18 @@ namespace Guardian
                 _feedback.Text = "";
                 _routine.Visibility = Visibility.Visible;
                 _hasNonOrthographicFailure = true;
+                var failedPayload = TelemetryPayload(originalAnswer, "wrong_answer");
                 if (_maxHelpLevelUsed == 1) ShowHelp(2, false);
                 else if (_maxHelpLevelUsed == 2) ShowHelp(3, false);
                 else UpdateHelpButton();
                 _answerBox.SelectAll();
-                var failedPayload = TelemetryPayload();
                 failedPayload["reason"] = "wrong_answer";
                 _logger.Log("MissionFailed", failedPayload);
                 _attempt++;
                 return;
             }
 
-            _logger.Log("MissionSolved", TelemetryPayload());
+            _logger.Log("MissionSolved", TelemetryPayload(originalAnswer, null));
 
             if (!_canExit)
             {
@@ -2356,6 +2357,7 @@ namespace Guardian
         }
 
         private Dictionary<string, object> TelemetryPayload() { return MissionTelemetry.Payload(_mission, _attempt, _maxHelpLevelUsed, _helpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed); }
+        private Dictionary<string, object> TelemetryPayload(string answer, string failureReason) { return MissionTelemetry.Payload(_mission, _attempt, _maxHelpLevelUsed, _helpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed, answer, failureReason); }
 
         private void RequestNextHelp()
         {
@@ -2511,10 +2513,10 @@ namespace Guardian
         {
             var analysis = new MissionAnswerAnalysis { Result = MissionAnswerResult.Invalid };
             if (string.IsNullOrWhiteSpace(input) || mission == null || mission.AcceptedAnswers == null) return analysis;
-            var normalized = MissionText.Normalize(input);
+            var normalized = NormalizeForMission(input, mission);
             foreach (var answer in mission.AcceptedAnswers)
             {
-                if (normalized == MissionText.Normalize(answer)) { analysis.Result = MissionAnswerResult.Correct; return analysis; }
+                if (normalized == NormalizeForMission(answer, mission)) { analysis.Result = MissionAnswerResult.Correct; return analysis; }
             }
             var best = Int32.MaxValue; string accepted = null; bool ambiguous = false;
             foreach (var answer in mission.AcceptedAnswers)
@@ -2528,6 +2530,17 @@ namespace Guardian
             if (accepted != null && !ambiguous) { analysis.Result=MissionAnswerResult.OrthographicNearMatch; analysis.MatchedAcceptedAnswer=accepted; analysis.EditDistance=best; return analysis; }
             analysis.Result = MissionAnswerResult.Wrong; return analysis;
         }
+
+        private static string NormalizeForMission(string value, Mission mission)
+        {
+            var normalized = MissionText.Normalize(value);
+            if (mission == null || !mission.AcceptsNaturalLanguageDate) return normalized;
+            var words = normalized.Split(' ');
+            if (words.Length >= 3 && IsDigits(words[0]) && words[1] == "de" && IsText(words[2])) return words[0] + " " + string.Join(" ", words, 2, words.Length - 2);
+            return normalized;
+        }
+
+        private static bool IsDigits(string value) { if (string.IsNullOrEmpty(value)) return false; foreach (var c in value) if (!char.IsDigit(c)) return false; return true; }
 
         public static WritingDifference DescribeDifference(string input, string expected)
         {
@@ -3260,6 +3273,7 @@ namespace Guardian
             var failures = new List<string>();
             CheckMissionGenerator(failures);
             CheckMissionValidator(failures);
+            CheckMissionTelemetryPayload(failures);
             CheckMissionRotationAndComprehension(failures);
             CheckMissionUnavailableDeduplication(failures);
             CheckAdminAuth(failures);
@@ -3295,12 +3309,18 @@ namespace Guardian
             var surname = new Mission { AcceptedAnswers = new List<string> { "Pereira" } };
             var season = new Mission { AcceptedAnswers = new List<string> { "invierno" } };
             var number = new Mission { AcceptedAnswers = new List<string> { "7" } };
+            var date = new Mission { AcceptsNaturalLanguageDate = true, AcceptedAnswers = new List<string> { "26 de noviembre" } };
             if (MissionValidator.Validate("otño", autumn) != MissionAnswerResult.OrthographicNearMatch) failures.Add("missing-letter autumn should be spelling near match");
             if (MissionValidator.Validate("OTONO", autumn) != MissionAnswerResult.Correct) failures.Add("accent normalization should remain correct");
             if (MissionValidator.Validate("Pereir", surname) != MissionAnswerResult.OrthographicNearMatch) failures.Add("sample surname should be spelling near match");
             if (MissionValidator.Validate("Bauti", surname) != MissionAnswerResult.Wrong) failures.Add("distant text must be wrong");
             if (MissionValidator.Validate("verano", season) != MissionAnswerResult.Wrong) failures.Add("semantic season mismatch must be wrong");
             if (MissionValidator.Validate("8", number) != MissionAnswerResult.Wrong) failures.Add("numbers must not use spelling flow");
+            if (MissionValidator.Validate("26 de noviembre", date) != MissionAnswerResult.Correct) failures.Add("date with de should remain correct");
+            if (MissionValidator.Validate("26 noviembre", date) != MissionAnswerResult.Correct) failures.Add("date without de should be correct");
+            if (MissionValidator.Validate("26 Noviembre", date) != MissionAnswerResult.Correct) failures.Add("date comparison should remain case-insensitive");
+            if (MissionValidator.Validate("25 noviembre", date) != MissionAnswerResult.Wrong) failures.Add("wrong date day should remain invalid");
+            if (MissionValidator.Validate("26 octubre", date) != MissionAnswerResult.Wrong) failures.Add("wrong date month should remain invalid");
             if (MissionValidator.DescribeDifference("veranno", "verano") != WritingDifference.ExtraLetter) failures.Add("extra letter diagnosis failed");
             if (MissionValidator.DescribeDifference("otño", "otoño") != WritingDifference.MissingLetter) failures.Add("missing letter diagnosis failed");
             if (MissionValidator.DescribeDifference("vernao", "verano") != WritingDifference.TransposedLetters) failures.Add("transposition diagnosis failed");
@@ -3317,6 +3337,21 @@ namespace Guardian
                 if (!resources.Contains("Guardian.Assets.Icons." + icon)) failures.Add("embedded icon missing: " + icon);
             }
             if (MissionContent.WritingAnswerRevealed("verano").IndexOf("verano", StringComparison.Ordinal) < 0) failures.Add("revealed writing feedback missing answer");
+        }
+
+        private static void CheckMissionTelemetryPayload(List<string> failures)
+        {
+            var mission = new Mission { Id = "test-mission", CategoryId = "comprehension", LevelId = "functional_1", SkillId = "age_birth", VariantId = "birthday_ask" };
+            var first = MissionTelemetry.Payload(mission, 1, 0, 0, false, 0, false, "  25 Noviembre  ", "wrong_answer");
+            var second = MissionTelemetry.Payload(mission, 2, 1, 1, false, 0, false, "25 noviembre", "wrong_answer");
+            var solved = MissionTelemetry.Payload(mission, 3, 1, 1, false, 0, false, "26 noviembre", null);
+            if ((string)first["answer"] != "  25 Noviembre  ") failures.Add("telemetry must preserve the original answer");
+            if ((int)first["attempt"] != 1 || (int)second["attempt"] != 2 || (int)solved["attempt"] != 3) failures.Add("telemetry attempt numbering failed");
+            if ((int)second["helpLevel"] != 1 || (string)first["failureReason"] != "wrong_answer") failures.Add("failed telemetry missing help level or failure reason");
+            if ((string)solved["answer"] != "26 noviembre" || !solved.ContainsKey("helpLevel") || solved.ContainsKey("failureReason")) failures.Add("solved telemetry payload shape failed");
+            var json = new JavaScriptSerializer().Serialize(solved);
+            var restored = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+            if ((string)restored["answer"] != "26 noviembre" || Convert.ToInt32(restored["attempt"]) != 3) failures.Add("telemetry payload serialization failed");
         }
 
         private static void CheckAdminAuth(List<string> failures)

@@ -264,9 +264,9 @@ def test_event_ingest_persists_and_deduplicates_by_event_id():
             {
                 "event_id": "11111111-1111-4111-8111-111111111111",
                 "occurred_at": "2026-08-16T12:00:00Z",
-                "event_type": "GuardianStarted",
+                "event_type": "MissionFailed",
                 "client_version": "0.3.0",
-                "payload": {"version": "0.3.0"},
+                "payload": {"version": "0.3.0", "answer": "sample answer", "attempt": 1, "helpLevel": 0, "failureReason": "wrong_answer"},
             }
         ],
     }
@@ -281,8 +281,12 @@ def test_event_ingest_persists_and_deduplicates_by_event_id():
     with SessionLocal() as db:
         events = db.query(DeviceEvent).filter(DeviceEvent.event_id == "11111111-1111-4111-8111-111111111111").all()
         assert len(events) == 1
-        assert events[0].event_type == "GuardianStarted"
+        assert events[0].event_type == "MissionFailed"
         assert events[0].payload["version"] == "0.3.0"
+        assert events[0].payload["answer"] == "sample answer"
+        assert events[0].payload["attempt"] == 1
+        assert events[0].payload["helpLevel"] == 0
+        assert events[0].payload["failureReason"] == "wrong_answer"
 
 
 def test_event_ingest_rejects_bad_device_token():

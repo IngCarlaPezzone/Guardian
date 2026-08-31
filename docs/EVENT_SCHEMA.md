@@ -79,7 +79,7 @@ El servidor deduplica por `event_id`. El cliente elimina de pendientes solo los 
 
 Desde `0.3.1`, el acceso local a `events-pending.jsonl` usa locking interproceso y los errores de telemetria no deben cerrar Guardian.
 
-Desde `0.4.0`, los eventos de misión nuevos incluyen `mission_id`, `category_id`, `level_id`, `skill_id`, `variant_id` y `attempt`. Las respuestas ingresadas y los valores del perfil privado no se registran en `events.jsonl`, `events-pending.jsonl` ni se envían al servidor.
+Desde `0.4.0`, los eventos de misión nuevos incluyen `mission_id`, `category_id`, `level_id`, `skill_id`, `variant_id` y `attempt`. Los valores del perfil privado no se registran ni se envían al servidor.
 
 Desde `0.4.3-staging-comprehension-help`, los eventos de misión incluyen además `skill_level_id` (nivel pedagógico), `max_help_level`, `help_requests_count`, `had_orthographic_error`, `writing_correction_count` y `writing_answer_revealed`.
 
@@ -88,7 +88,9 @@ Desde `0.4.3-staging-comprehension-help`, los eventos de misión incluyen ademá
 - `MissionHelpRequested` añade `help_level` al mostrarse una ayuda, sea solicitada (nivel 1) o mostrada automáticamente tras un error no ortográfico posterior (niveles 2 y 3).
 - `MissionWritingHintShown` añade `writing_hint_stage` (`1`, `2` o `3`) cuando se muestra feedback ortográfico o se revela la forma correcta.
 
-Estos payloads nunca incluyen el input, la respuesta aceptada, el texto de la consigna o de ayuda, prefijos ni datos del perfil privado.
+`MissionFailed` y `MissionSolved` incluyen `answer`, con el texto original enviado por la persona usuaria, y `helpLevel`, con el nivel de ayuda vigente al intentar responder. `MissionFailed` añade también `failureReason` (`invalid_input`, `orthographic_error` o `wrong_answer`). Estos campos viajan exclusivamente en el payload del mecanismo de telemetría existente; no se agregan a logs de consola ni a otros registros.
+
+Salvo `answer` en `MissionFailed` y `MissionSolved`, estos payloads nunca incluyen el input, la respuesta aceptada, el texto de la consigna o de ayuda, prefijos ni datos del perfil privado.
 
 ## Configuracion Remota
 
