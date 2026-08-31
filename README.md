@@ -260,7 +260,9 @@ La vista permite filtrar por:
 - errores;
 - control remoto.
 
-Los eventos se muestran en formato compacto y conservan acceso al payload JSON desplegable.
+Los eventos se muestran en formato compacto. El payload JSON se conserva en el servidor para diagnóstico, pero la tabla actual de Activity no lo despliega ni muestra respuestas escritas.
+
+Desde 0.4.6, MissionFailed y MissionSolved guardan en telemetría la respuesta original enviada, el intento y el nivel de ayuda vigente; los fallos incluyen la clasificación existente. Estas respuestas son datos sensibles: no se imprimen en consola, no se agregan a mensajes de error ni se incluyen en ejemplos o fixtures del repositorio.
 
 La zona horaria de Admin puede configurarse con:
 

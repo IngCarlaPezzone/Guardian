@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.6 — Telemetría de intentos y fechas naturales
+
+- MissionFailed y MissionSolved registran en su payload la respuesta original enviada, el número de intento y el nivel de ayuda vigente; los fallos incluyen además su clasificación existente en failureReason.
+- Para misiones de fecha natural, la preposición de entre día y mes es opcional. Se mantienen las normalizaciones previas de mayúsculas y acentos, sin relajar respuestas de otras habilidades.
+- La release fue validada en STG y en PC TEST contra PROD. La promoción al dispositivo productivo final sigue siendo una acción manual y debe verificarse después de aplicarla.
+- El payload se persiste localmente y en el servidor; Activity continúa mostrando un resumen compacto y no expone la respuesta en su tabla actual.
+
 ## 0.4.5 — Stage 3 servidor/Admin desplegado; cliente publicado
 
 - Prepara Stage 3 del Admin: Dashboard operativo de dispositivos, Configuración unificada, Activity con hora local y Métricas con agregación server-side y drill-down.

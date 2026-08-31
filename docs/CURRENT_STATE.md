@@ -101,7 +101,7 @@ La corrección fue integrada en `main` y la release `0.4.4` quedó registrada en
 
 ## Versionado y promoción
 
-La base estable actual del repositorio es `0.4.4`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+La base estable actual del repositorio es `0.4.6`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
 
 No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. La RC `0.4.3-rc.3` se probó integralmente en STG —incluido updater—; `0.4.3` y la corrección `0.4.4` están registradas en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
 
@@ -140,15 +140,15 @@ La importación sanitizada también fue validada manualmente contra PROD: la pri
 
 Nunca se utiliza una feature branch sobre PROD para una vista previa visual o funcional.
 
-## Stage 3 — Admin y métricas (servidor/Admin en PROD; cliente 0.4.5 publicado)
+## Stage 3 — Admin y métricas (servidor/Admin en PROD; cliente 0.4.6 publicado)
 
-Stage 3A/3B de servidor/Admin está desplegado en PROD desde `main`. Las migraciones `0005_device_timezone` y `0006_device_kind` llegaron a `head` con datos existentes preservados. Los clientes actuales `0.4.4` continúan funcionando y reportando heartbeats/RemoteConfig. El cliente Guardian `0.4.5`, validado integralmente como `0.4.5-rc.2` en STG, está publicado en PROD y espera rollout controlado: primero PC TEST; el dispositivo productivo final todavía no fue actualizado.
+Stage 3A/3B de servidor/Admin está desplegado en PROD desde main. Las migraciones 0005_device_timezone y 0006_device_kind llegaron a head con datos existentes preservados. Los clientes anteriores continúan funcionando y reportando heartbeats/RemoteConfig. El cliente Guardian 0.4.6, validado en STG y en PC TEST contra PROD, está publicado en PROD. La promoción al dispositivo productivo final es manual y debe verificarse tras aplicarla.
 
 - Admin con cards compactas: `display_name` principal, hostname secundario, estado operativo y acciones remotas agrupadas.
 - Configuración unificada de nombre visible, intervalo, skills y perfil privado; la zona horaria es técnica, automática y no editable en Admin.
-- Activity con fecha y hora local del dispositivo, filtros de período, categorías humanas, eventos técnicos opcionales y JSON desplegable.
+- Activity con fecha y hora local del dispositivo, filtros de período, categorías humanas, eventos técnicos opcionales y resumen compacto. El payload JSON queda persistido en servidor, pero la tabla actual no lo muestra ni expone las respuestas escritas.
 - Métricas agregadas server-side por `mission_id`, con compatibilidad `missionId`, reintentos deduplicados, drill-down Global → Categoría → Nivel → Skill y variantes bajo demanda.
-- La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC. El cliente `0.4.5` reporta su offset local en registro y heartbeat; los clientes `0.4.4` compatibles conservan `UTC` hasta actualizarse.
+- La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC. El cliente `0.4.6` reporta su offset local en registro y heartbeat; los clientes `0.4.4` compatibles conservan `UTC` hasta actualizarse.
 - El Dashboard muestra por defecto sólo dispositivos `operational`. La migración `0006_device_kind` clasifica explícitamente fixtures `stg_demo` e importaciones `stg_imported_telemetry`, sin deduplicar por hostname; esos registros siguen disponibles para Activity/Métricas y pueden revisarse de forma deliberada en `/admin/?show_synthetic=true`.
 
-La implementación no cambia categorías, niveles ni skills educativas, ni el comportamiento validado de LockWindow, RemoteConfig, perfil privado, rotación o updater. El siguiente paso requiere aprobación independiente: actualizar y validar primero PC TEST contra PROD; no seleccionar ni enviar la release al dispositivo productivo final.
+La versión 0.4.6 agrega telemetría de intentos: MissionFailed y MissionSolved incluyen answer con el texto original, attempt y helpLevel; los fallos incluyen failureReason. También acepta fechas naturales con o sin la preposición de entre día y mes. La captura de respuestas no se replica en la importación sanitizada de telemetría hacia STG.

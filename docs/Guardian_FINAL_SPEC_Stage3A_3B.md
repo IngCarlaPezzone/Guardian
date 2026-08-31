@@ -45,7 +45,7 @@ Particularmente:
 - la edición de nombre visible ya existe;
 - `Activity` ya posee `input type="date"`;
 - mission config ya existe;
-- JSON desplegable ya existe;
+- el payload JSON de Activity ya existe en servidor; la tabla actual muestra sólo un resumen compacto y no lo despliega;
 - release metadata y SHA-256 deben seguir existiendo internamente;
 - la lógica 0.4.1 no debe reescribirse.
 

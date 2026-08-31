@@ -647,7 +647,7 @@ Ejemplos:
 
 # 25. Privacidad
 
-Guardian no debe registrar el texto ingresado por el usuario en las respuestas de comprensión.
+Actualización 0.4.6: Guardian registra el texto original ingresado por la persona usuaria únicamente en los eventos de telemetría MissionFailed y MissionSolved, para analizar la secuencia de intentos. No se registra en consola, mensajes de error, fixtures ni documentación pública, y no se transfiere mediante la importación sanitizada hacia STG.
 
 Debe registrar:
 
@@ -655,8 +655,9 @@ Debe registrar:
 - qué variante;
 - si fue correcta;
 - cuántos intentos necesitó.
+- la respuesta original enviada y el nivel de ayuda vigente, sólo en los eventos de intento o resolución.
 
-No el contenido textual escrito.
+No otros datos de perfil privado ni contenido de la consigna o de las ayudas.
 
 ---
 
@@ -755,5 +756,5 @@ La iteración se acepta si:
 17. Las variantes no se gestionan desde Admin.
 18. El perfil personal es privado y editable.
 19. Ningún dato personal real queda en el repo público.
-20. No se registra el texto de respuestas personales.
+20. El texto de respuesta se registra únicamente en MissionFailed y MissionSolved como telemetría sensible; no aparece en el repositorio público, consola, errores ni importaciones sanitizadas.
 21. El sistema queda preparado para analizar rendimiento por habilidad.

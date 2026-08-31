@@ -2244,7 +2244,7 @@ Esta iteración está técnicamente completa cuando:
 7. El perfil privado está fuera de Git.
 8. El perfil se edita desde Admin.
 9. El cliente recibe los datos mínimos necesarios.
-10. Datos privados no aparecen en logs/telemetría.
+10. Datos del perfil privado no aparecen en logs/telemetría. La excepción documentada desde 0.4.6 es answer en MissionFailed y MissionSolved, limitado al mecanismo de telemetría existente y tratado como dato sensible.
 11. Una misión se presenta por trigger.
 12. Retry conserva misión, skill, variant y mission_id.
 13. Selector global combina categorías.
