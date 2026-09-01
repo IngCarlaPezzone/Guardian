@@ -143,7 +143,7 @@ Filtros disponibles:
 
 La vista muestra un resumen legible. El payload JSON se conserva para diagnóstico en el servidor, pero la tabla actual de Activity no lo expone ni muestra respuestas escritas.
 
-Desde 0.4.6, los eventos MissionFailed y MissionSolved incluyen la respuesta original, el intento y el nivel de ayuda vigente; los fallos incluyen además la clasificación existente. Tratar estos payloads como datos sensibles y no copiarlos a tickets, documentación pública ni fixtures.
+Desde 0.4.6, los eventos MissionFailed y MissionSolved incluyen la respuesta original, el intento y el nivel de ayuda vigente; los fallos incluyen además la clasificación existente. Desde 0.4.7, MissionStarted incluye `question_text`, la consigna final mostrada. Tratar estos payloads como datos sensibles y no copiarlos a tickets, documentación pública ni fixtures.
 
 La hora se muestra en la zona configurada por `GUARDIAN_ADMIN_TIMEZONE` si esta definida; si no, usa la zona local del proceso servidor. En Docker puede convenir definir explicitamente un valor IANA como `Etc/UTC` u otra zona disponible en la imagen.
 

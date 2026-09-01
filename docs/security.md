@@ -135,7 +135,7 @@ Los payloads de eventos no deben contener:
 - configuración privada innecesaria;
 - datos personales que no sean necesarios para la funcionalidad.
 
-La excepción aprobada desde 0.4.6 es answer en MissionFailed y MissionSolved: se conserva para analizar la secuencia de intentos. Es dato sensible y sólo viaja por la persistencia local y sincronización de telemetría existentes. No debe aparecer en consola, errores, fixtures, documentación pública, importaciones sanitizadas hacia STG ni repositorios.
+Las excepciones aprobadas son `answer` en MissionFailed y MissionSolved (desde 0.4.6) y `question_text` en MissionStarted (desde 0.4.7): se conservan para analizar una ejecución concreta. Son datos sensibles y sólo viajan por la persistencia local y sincronización de telemetría existentes. No deben aparecer en consola, errores, fixtures, documentación pública, importaciones sanitizadas hacia STG ni repositorios.
 
 Los eventos de actualización pueden almacenar información técnica como:
 

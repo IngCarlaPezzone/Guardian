@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.7 — Ayudas explícitas y métricas por categoría
+
+- Las ayudas de comprensión avanzan sólo después de un nuevo intento semántico incorrecto tras solicitar el nivel anterior. Los errores ortográficos mantienen su flujo independiente y no desbloquean ayudas de comprensión.
+- `MissionStarted` registra `question_text`, el texto final mostrado para la misión. Junto con la telemetría de intentos y ayudas, permite reconstruir el detalle cronológico de una ejecución sin inferir datos inexistentes.
+- Métricas separa indicadores comunes de los específicos de Comprensión y Matemática. El dashboard usa labels humanos, conserva los datos históricos faltantes como desconocidos y muestra el detalle inline de cada ejecución.
+- La release se validó en STG y fue publicada en PROD. La actualización de cada dispositivo sigue siendo una acción manual y controlada.
+
 ## 0.4.6 — Telemetría de intentos y fechas naturales
 
 - MissionFailed y MissionSolved registran en su payload la respuesta original enviada, el número de intento y el nivel de ayuda vigente; los fallos incluyen además su clasificación existente en failureReason.

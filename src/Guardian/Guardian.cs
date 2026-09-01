@@ -1107,13 +1107,13 @@ namespace Guardian
             _missionUnavailableDeduplicator.ShouldLog(true, availabilitySignature);
             _missionActive = true;
             _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger);
-            var startedPayload = MissionTelemetry.Payload(mission, 1);
+            _lockWindow = new LockWindow(mission, _config, _logger);
+            var startedPayload = MissionTelemetry.StartedPayload(mission, _lockWindow.QuestionText);
             startedPayload["elapsedSeconds"] = _counter.ElapsedSeconds;
             startedPayload["trigger"] = trigger.ToString().ToLowerInvariant();
             _logger.Log("MissionStarted", startedPayload);
             _logger.Log("DeviceLocked", new Dictionary<string, object> { { "missionId", mission.Id } });
 
-            _lockWindow = new LockWindow(mission, _config, _logger);
             _lockWindow.UnlockRequested += delegate
             {
                 _counter.Reset();
@@ -2052,9 +2052,7 @@ namespace Guardian
         private bool _canExit;
         private bool _unlockRequested;
         private int _attempt = 1;
-        private int _maxHelpLevelUsed;
-        private int _helpRequestsCount;
-        private bool _hasNonOrthographicFailure;
+        private readonly MissionHelpProgression _helpProgression = new MissionHelpProgression();
         private bool _hadOrthographicError;
         private int _writingCorrectionCount;
         private bool _writingAnswerRevealed;
@@ -2279,6 +2277,8 @@ namespace Guardian
             };
         }
 
+        public string QuestionText { get { return _promptText.Text; } }
+
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             if (!_unlockRequested)
@@ -2333,11 +2333,9 @@ namespace Guardian
                 _feedbackIcon.Visibility = Visibility.Collapsed;
                 _feedback.Text = "";
                 _routine.Visibility = Visibility.Visible;
-                _hasNonOrthographicFailure = true;
                 var failedPayload = TelemetryPayload(originalAnswer, "wrong_answer");
-                if (_maxHelpLevelUsed == 1) ShowHelp(2, false);
-                else if (_maxHelpLevelUsed == 2) ShowHelp(3, false);
-                else UpdateHelpButton();
+                _helpProgression.RegisterSemanticFailure();
+                UpdateHelpButton();
                 _answerBox.SelectAll();
                 failedPayload["reason"] = "wrong_answer";
                 _logger.Log("MissionFailed", failedPayload);
@@ -2356,17 +2354,17 @@ namespace Guardian
             RequestUnlock();
         }
 
-        private Dictionary<string, object> TelemetryPayload() { return MissionTelemetry.Payload(_mission, _attempt, _maxHelpLevelUsed, _helpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed); }
-        private Dictionary<string, object> TelemetryPayload(string answer, string failureReason) { return MissionTelemetry.Payload(_mission, _attempt, _maxHelpLevelUsed, _helpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed, answer, failureReason); }
+        private Dictionary<string, object> TelemetryPayload() { return MissionTelemetry.Payload(_mission, _attempt, _helpProgression.MaxHelpLevelUsed, _helpProgression.HelpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed); }
+        private Dictionary<string, object> TelemetryPayload(string answer, string failureReason) { return MissionTelemetry.Payload(_mission, _attempt, _helpProgression.MaxHelpLevelUsed, _helpProgression.HelpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed, answer, failureReason); }
 
         private void RequestNextHelp()
         {
-            var next = 1;
-            if (!_hasNonOrthographicFailure || _maxHelpLevelUsed != 0) return;
-            ShowHelp(next, true);
+            int next;
+            if (!_helpProgression.TryRequestNext(out next)) return;
+            ShowHelp(next);
         }
 
-        private void ShowHelp(int next, bool requestedByUser)
+        private void ShowHelp(int next)
         {
             MissionHelpStep step = null;
             if (_mission.HelpSteps != null) foreach (var candidate in _mission.HelpSteps) if (candidate.HelpLevel == next) { step = candidate; break; }
@@ -2376,7 +2374,6 @@ namespace Guardian
             helpRow.Children.Add(CreateIcon(next == 1 ? "rephrase.png" : next == 2 ? "hint.png" : "guided.png", 28));
             helpRow.Children.Add(text);
             _helpPanel.Children.Add(helpRow);
-            _maxHelpLevelUsed = next; if (requestedByUser) _helpRequestsCount++;
             var payload = TelemetryPayload(); payload["help_level"] = next;
             _logger.Log("MissionHelpRequested", payload);
             UpdateHelpButton();
@@ -2384,8 +2381,10 @@ namespace Guardian
 
         private void UpdateHelpButton()
         {
-            if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || !_hasNonOrthographicFailure || _maxHelpLevelUsed != 0) { _helpButton.Visibility = Visibility.Collapsed; return; }
-            _helpButton.Content = CreateIconButtonContent("rephrase.png", MissionContent.RephraseButton);
+            if (_mission == null || _mission.HelpSteps == null || _mission.HelpSteps.Count == 0 || _helpProgression.NextAvailableLevel == 0) { _helpButton.Visibility = Visibility.Collapsed; return; }
+            var label = _helpProgression.NextAvailableLevel == 1 ? MissionContent.RephraseButton : _helpProgression.NextAvailableLevel == 2 ? MissionContent.HintButton : MissionContent.GuidedButton;
+            var icon = _helpProgression.NextAvailableLevel == 1 ? "rephrase.png" : _helpProgression.NextAvailableLevel == 2 ? "hint.png" : "guided.png";
+            _helpButton.Content = CreateIconButtonContent(icon, label);
             _helpButton.Visibility = Visibility.Visible;
         }
 
@@ -3274,6 +3273,7 @@ namespace Guardian
             CheckMissionGenerator(failures);
             CheckMissionValidator(failures);
             CheckMissionTelemetryPayload(failures);
+            CheckMissionHelpProgression(failures);
             CheckMissionRotationAndComprehension(failures);
             CheckMissionUnavailableDeduplication(failures);
             CheckAdminAuth(failures);
@@ -3341,7 +3341,7 @@ namespace Guardian
 
         private static void CheckMissionTelemetryPayload(List<string> failures)
         {
-            var mission = new Mission { Id = "test-mission", CategoryId = "comprehension", LevelId = "functional_1", SkillId = "age_birth", VariantId = "birthday_ask" };
+            var mission = new Mission { Id = "test-mission", Prompt = "Hoy es martes 1 de septiembre. ¿Qué día fue ayer?", CategoryId = "comprehension", LevelId = "functional_1", SkillId = "age_birth", VariantId = "birthday_ask" };
             var first = MissionTelemetry.Payload(mission, 1, 0, 0, false, 0, false, "  25 Noviembre  ", "wrong_answer");
             var second = MissionTelemetry.Payload(mission, 2, 1, 1, false, 0, false, "25 noviembre", "wrong_answer");
             var solved = MissionTelemetry.Payload(mission, 3, 1, 1, false, 0, false, "26 noviembre", null);
@@ -3352,6 +3352,32 @@ namespace Guardian
             var json = new JavaScriptSerializer().Serialize(solved);
             var restored = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
             if ((string)restored["answer"] != "26 noviembre" || Convert.ToInt32(restored["attempt"]) != 3) failures.Add("telemetry payload serialization failed");
+            var started = MissionTelemetry.StartedPayload(mission, mission.Prompt);
+            if ((string)started["question_text"] != mission.Prompt) failures.Add("MissionStarted must include the rendered question text");
+            var restoredStarted = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(new JavaScriptSerializer().Serialize(started));
+            if ((string)restoredStarted["question_text"] != mission.Prompt) failures.Add("question text telemetry serialization failed");
+        }
+
+        private static void CheckMissionHelpProgression(List<string> failures)
+        {
+            var progression = new MissionHelpProgression();
+            progression.RegisterSemanticFailure();
+            if (progression.NextAvailableLevel != 1) failures.Add("first semantic failure should enable help level 1");
+            int level;
+            if (!progression.TryRequestNext(out level) || level != 1 || progression.MaxHelpLevelUsed != 1 || progression.HelpRequestsCount != 1) failures.Add("requesting help level 1 telemetry state failed");
+            if (progression.NextAvailableLevel != 0) failures.Add("requesting help level 1 must not enable help level 2");
+            if (progression.TryRequestNext(out level)) failures.Add("help level 2 must require a new semantic failure");
+            progression.RegisterSemanticFailure();
+            if (progression.NextAvailableLevel != 2) failures.Add("semantic failure after help level 1 should enable help level 2");
+            if (!progression.TryRequestNext(out level) || level != 2 || progression.HelpRequestsCount != 2) failures.Add("requesting help level 2 telemetry state failed");
+            if (progression.NextAvailableLevel != 0) failures.Add("requesting help level 2 must not enable help level 3");
+            progression.RegisterSemanticFailure();
+            if (progression.NextAvailableLevel != 3) failures.Add("semantic failure after help level 2 should enable help level 3");
+            if (!progression.TryRequestNext(out level) || level != 3 || progression.MaxHelpLevelUsed != 3 || progression.HelpRequestsCount != 3) failures.Add("requesting help level 3 telemetry state failed");
+            // Los errores ortográficos no llaman RegisterSemanticFailure; este estado
+            // verifica que el progreso no se altere si no llega un fallo semántico.
+            var spellingOnly = new MissionHelpProgression();
+            if (spellingOnly.NextAvailableLevel != 0 || spellingOnly.TryRequestNext(out level)) failures.Add("orthographic error must not advance comprehension help");
         }
 
         private static void CheckAdminAuth(List<string> failures)

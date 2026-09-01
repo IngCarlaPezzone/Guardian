@@ -48,7 +48,7 @@ La sincronizacion nunca bloquea misiones ni UI. Si falla, los eventos siguen en 
 
 Desde `0.3.1`, todo acceso a `events-pending.jsonl` dentro de Guardian usa una capa unica con mutex interproceso. `EventLogger` y `TelemetrySync` no acceden directamente al archivo. Si el archivo esta temporalmente ocupado o hay un error de I/O, la telemetria falla de manera silenciosa y Guardian continua funcionando.
 
-Desde `0.4.6`, los eventos `MissionFailed` y `MissionSolved` incluyen la respuesta original enviada, el intento y el nivel de ayuda vigente; los fallos agregan `failureReason`. Es una excepción acotada para análisis educativo: la respuesta se conserva sólo mediante el pipeline de telemetría local y central, no se escribe en consola ni se replica en la importación sanitizada hacia STG.
+Desde `0.4.6`, los eventos `MissionFailed` y `MissionSolved` incluyen la respuesta original enviada, el intento y el nivel de ayuda vigente; los fallos agregan `failureReason`. Desde `0.4.7`, `MissionStarted` añade `question_text`, el texto final mostrado en pantalla. Son excepciones acotadas para análisis educativo: respuesta y consigna se conservan sólo mediante el pipeline de telemetría local y central, no se escriben en consola ni se replican en la importación sanitizada hacia STG.
 
 Guardian usa un mutex por directorio de datos para evitar dos instancias activas del cliente en el mismo usuario/maquina. Esto reduce colisiones durante arranque manual, watchdog o update. El Updater tambien espera explicitamente a que no queden procesos `Guardian` antes de reemplazar binarios.
 

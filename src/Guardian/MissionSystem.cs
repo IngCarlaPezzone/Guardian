@@ -126,6 +126,43 @@ namespace Guardian
 
         public static Dictionary<string, object> Payload(Mission m, int attempt, int maxHelpLevel, int helpRequestsCount, bool hadOrthographicError, int writingCorrectionCount, bool writingAnswerRevealed) { return Payload(m, attempt, maxHelpLevel, helpRequestsCount, hadOrthographicError, writingCorrectionCount, writingAnswerRevealed, null, null); }
         public static Dictionary<string, object> Payload(Mission m, int attempt) { return Payload(m, attempt, 0, 0, false, 0, false, null, null); }
+
+        // El texto se toma del control que renderiza la misión y se incluye sólo en
+        // MissionStarted. No se vuelve a registrar en logs auxiliares.
+        public static Dictionary<string, object> StartedPayload(Mission m, string questionText)
+        {
+            var payload = Payload(m, 1);
+            payload["question_text"] = questionText;
+            return payload;
+        }
+    }
+
+    // Mantiene separados el máximo de ayuda ya usada y el próximo nivel que el
+    // usuario puede solicitar. Una ayuda no abre la siguiente: hace falta otro
+    // error semántico después de pedirla.
+    public sealed class MissionHelpProgression
+    {
+        public int MaxHelpLevelUsed { get; private set; }
+        public int HelpRequestsCount { get; private set; }
+        public int NextAvailableLevel { get; private set; }
+
+        public void RegisterSemanticFailure()
+        {
+            if (NextAvailableLevel != 0) return;
+            if (MaxHelpLevelUsed == 0) NextAvailableLevel = 1;
+            else if (MaxHelpLevelUsed == 1) NextAvailableLevel = 2;
+            else if (MaxHelpLevelUsed == 2) NextAvailableLevel = 3;
+        }
+
+        public bool TryRequestNext(out int level)
+        {
+            level = NextAvailableLevel;
+            if (level == 0) return false;
+            MaxHelpLevelUsed = level;
+            HelpRequestsCount++;
+            NextAvailableLevel = 0;
+            return true;
+        }
     }
 
     public sealed class MissionUnavailableDeduplicator

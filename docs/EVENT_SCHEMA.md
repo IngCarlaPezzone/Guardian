@@ -20,7 +20,8 @@ Guardian escribe eventos locales en JSON Lines y, desde Etapa 1, sincroniza una 
     "skill_level_id": "basic_operations_1",
     "skill_id": "addition",
     "variant_id": "generated",
-    "attempt": 1
+    "attempt": 1,
+    "question_text": "12 + 8"
   }
 }
 ```
@@ -85,12 +86,14 @@ Desde `0.4.3-staging-comprehension-help`, los eventos de misión incluyen ademá
 
 - `max_help_level` es el mayor nivel de ayuda realmente mostrado; no aumenta por errores ortográficos.
 - `help_requests_count` cuenta las ayudas solicitadas explícitamente por la persona usuaria.
-- `MissionHelpRequested` añade `help_level` al mostrarse una ayuda, sea solicitada (nivel 1) o mostrada automáticamente tras un error no ortográfico posterior (niveles 2 y 3).
+- `MissionHelpRequested` añade `help_level` cuando la persona usuaria solicita una ayuda disponible. Cada nivel posterior requiere primero otro error semántico después de haber solicitado el nivel anterior; no se muestran ayudas automáticamente.
 - `MissionWritingHintShown` añade `writing_hint_stage` (`1`, `2` o `3`) cuando se muestra feedback ortográfico o se revela la forma correcta.
 
 `MissionFailed` y `MissionSolved` incluyen `answer`, con el texto original enviado por la persona usuaria, y `helpLevel`, con el nivel de ayuda vigente al intentar responder. `MissionFailed` añade también `failureReason` (`invalid_input`, `orthographic_error` o `wrong_answer`). Estos campos viajan exclusivamente en el payload del mecanismo de telemetría existente; no se agregan a logs de consola ni a otros registros.
 
-Salvo `answer` en `MissionFailed` y `MissionSolved`, estos payloads nunca incluyen el input, la respuesta aceptada, el texto de la consigna o de ayuda, prefijos ni datos del perfil privado.
+`MissionStarted` incluye `question_text`: el texto final exacto que se muestra en pantalla, con sus valores dinámicos ya resueltos. No se reconstruye posteriormente ni se imprime en consola, excepciones o registros auxiliares. Los eventos históricos que no tienen este campo deben tratarse como dato desconocido.
+
+Salvo `answer` en `MissionFailed` y `MissionSolved` y `question_text` en `MissionStarted`, estos payloads nunca incluyen el input, la respuesta aceptada, el texto de la consigna o de ayuda, prefijos ni datos del perfil privado.
 
 ## Configuracion Remota
 

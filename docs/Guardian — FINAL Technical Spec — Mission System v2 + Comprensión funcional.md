@@ -1477,10 +1477,10 @@ Todos los tests que necesiten perfil utilizarán valores ficticios.
 Ejemplo:
 
 ```text
-preferredName = "Tomi"
-firstName = "Tomás"
-middleName = "Luis"
-lastName = "Pérez"
+preferredName = "Nombre de ejemplo"
+firstName = "Nombre"
+middleName = "Segundo nombre"
+lastName = "Apellido"
 birthDate = fixed test date
 ```
 
@@ -1497,32 +1497,32 @@ Para `personal_name`:
 Correctos:
 
 ```text
-Tomi
-Tomás
-Tomás Pérez
-Tomás Luis Pérez
+Nombre de ejemplo
+Nombre
+Nombre Apellido
+Nombre Segundo nombre Apellido
 ```
 
 Incorrectos:
 
 ```text
-Pérez
-Luis
+Apellido
+Segundo nombre
 ```
 
 Para `last_name`:
 
 ```text
-Pérez → correct
-Tomás → incorrect
+Apellido → correct
+Nombre → incorrect
 ```
 
 Para `full_name`:
 
 ```text
-Tomás Luis Pérez → correct
-Tomás Pérez → incorrect
-Tomi → incorrect
+Nombre Segundo nombre Apellido → correct
+Nombre Apellido → incorrect
+Nombre de ejemplo → incorrect
 ```
 
 ---
@@ -1532,10 +1532,10 @@ Tomi → incorrect
 Debe probar:
 
 ```text
-TOMÁS
-tomás
-Tomas
- " tomás "
+NOMBRE
+nombre
+Nombre
+ " nombre "
 ```
 
 según la normalización definida.

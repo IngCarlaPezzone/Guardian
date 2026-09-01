@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["DEVICE_BOOTSTRAP_TOKEN"] = "test-bootstrap"
@@ -12,7 +12,7 @@ from server.app.admin import ADMIN_CSS_VERSION, admin_title_with_section, sign_u
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
-from server.app.metrics import dashboard_data
+from server.app.metrics import QUESTION_LABELS, dashboard_data
 from server.app.models import DEVICE_KIND_STG_DEMO, DEVICE_KIND_STG_IMPORTED_TELEMETRY, Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.security import hash_secret, utcnow
 
@@ -267,7 +267,14 @@ def test_event_ingest_persists_and_deduplicates_by_event_id():
                 "event_type": "MissionFailed",
                 "client_version": "0.3.0",
                 "payload": {"version": "0.3.0", "answer": "sample answer", "attempt": 1, "helpLevel": 0, "failureReason": "wrong_answer"},
-            }
+            },
+            {
+                "event_id": "11111111-1111-4111-8111-111111111112",
+                "occurred_at": "2026-08-16T12:00:01Z",
+                "event_type": "MissionStarted",
+                "client_version": "0.4.6",
+                "payload": {"mission_id": "question-text-test", "question_text": "Hoy es martes. ¿Qué día fue ayer?", "attempt": 1},
+            },
         ],
     }
 
@@ -275,9 +282,9 @@ def test_event_ingest_persists_and_deduplicates_by_event_id():
     second = client.post("/api/v1/events", headers=headers, json=payload)
 
     assert first.status_code == 200
-    assert first.json()["accepted_event_ids"] == ["11111111-1111-4111-8111-111111111111"]
+    assert first.json()["accepted_event_ids"] == ["11111111-1111-4111-8111-111111111111", "11111111-1111-4111-8111-111111111112"]
     assert second.status_code == 200
-    assert second.json()["accepted_event_ids"] == ["11111111-1111-4111-8111-111111111111"]
+    assert second.json()["accepted_event_ids"] == ["11111111-1111-4111-8111-111111111111", "11111111-1111-4111-8111-111111111112"]
     with SessionLocal() as db:
         events = db.query(DeviceEvent).filter(DeviceEvent.event_id == "11111111-1111-4111-8111-111111111111").all()
         assert len(events) == 1
@@ -287,6 +294,8 @@ def test_event_ingest_persists_and_deduplicates_by_event_id():
         assert events[0].payload["attempt"] == 1
         assert events[0].payload["helpLevel"] == 0
         assert events[0].payload["failureReason"] == "wrong_answer"
+        started = db.query(DeviceEvent).filter(DeviceEvent.event_id == "11111111-1111-4111-8111-111111111112").one()
+        assert started.payload["question_text"] == "Hoy es martes. ¿Qué día fue ayer?"
 
 
 def test_event_ingest_rejects_bad_device_token():
@@ -793,6 +802,7 @@ def test_activity_uses_device_timezone_and_hides_technical_events_by_default():
 
 def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
     client = admin_client()
+    assert QUESTION_LABELS["generated"] == "Operación matemática"
     device_id = "00000000-0000-4000-8000-00000000abc5"
     with SessionLocal() as db:
         db.add(Device(id=device_id, machine_name="Metrics-PC", token_hash=hash_secret("metrics-token"), client_version="0.4.1", last_seen_at=utcnow()))
@@ -817,15 +827,81 @@ def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
         data = dashboard_data(db, db.get(Device, device_id), "all", None, None, None, None, None)
     assert data["summary"]["missions"] == 3
     assert data["summary"]["first_attempt"] == 2
-    assert data["summary"]["third_plus"] == 1
     assert data["summary"]["total_attempts"] == 5
+    assert data["summary"]["average_attempts"] == round(5 / 3, 2)
+    assert "comprehension_help" not in data["summary"]
     assert data["summary"]["median_seconds"] == 10.0
     assert {row["label"] for row in data["rows"]} == {"Matemática", "Comprensión"}
 
     response = client.get(f"/admin/devices/{device_id}/metrics?period=all")
     assert response.status_code == 200
     assert "Misiones resueltas" in response.text
+    assert "Categoría" in response.text
+    assert "Misiones por categoría" not in response.text
+    assert "Ayuda de comprensión" not in response.text
+    assert "1.er intento" not in response.text
     assert "Comprensión" in response.text
     skill = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1&skill=calendar")
     assert skill.status_code == 200
     assert "Preguntas o consignas" not in skill.text
+    assert "Ayuda de comprensión" in skill.text
+    assert "Máximo apoyo de comprensión" not in skill.text
+    assert "Máximo apoyo ortográfico" not in skill.text
+    comprehension = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension")
+    assert "Máximo apoyo de comprensión" in comprehension.text
+    assert "Máximo apoyo ortográfico" in comprehension.text
+
+    with SessionLocal() as db:
+        math_data = dashboard_data(db, db.get(Device, device_id), "all", None, None, "math", None, None)
+    assert math_data["summary"]["first_attempt"] == 2
+    assert math_data["summary"]["second_attempt"] == 0
+    assert math_data["summary"]["third_plus"] == 0
+    math = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=math&level=basic_operations_1&skill=addition")
+    assert "2do intento" in math.text
+    assert "3+ intentos" in math.text
+    assert "Ayuda de comprensión" not in math.text
+    assert "Apoyo ortográfico" not in math.text
+    assert "Ayuda máxima" not in math.text
+
+
+def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
+    device_id = "00000000-0000-4000-8000-00000000abc6"
+    base = datetime(2026, 9, 1, 18, 42, tzinfo=timezone.utc)
+    common = {"category_id": "comprehension", "level_id": "functional_1", "skill_id": "temporal_relations", "variant_id": "yesterday_weekday"}
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Metrics-detail-PC", token_hash=hash_secret("metrics-detail-token"), client_version="0.4.6", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="UTC", version=1))
+        items = [
+            ("501", "MissionStarted", "historic", 0, {**common, "mission_id": "historic"}),
+            ("502", "MissionSolved", "historic", 1, {**common, "mission_id": "historic", "attempt": 1}),
+            ("503", "MissionStarted", "help", 2, {**common, "mission_id": "help", "question_text": "Hoy es martes. ¿Qué día fue ayer?", "attempt": 1, "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
+            ("504", "MissionFailed", "help", 4, {**common, "mission_id": "help", "attempt": 1, "answer": "domingo", "failureReason": "wrong_answer", "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
+            ("505", "MissionHelpRequested", "help", 5, {**common, "mission_id": "help", "attempt": 2, "help_level": 1, "max_help_level": 1, "help_requests_count": 1, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
+            ("506", "MissionSolved", "help", 7, {**common, "mission_id": "help", "attempt": 2, "answer": "lunes", "max_help_level": 1, "help_requests_count": 1, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
+            ("507", "MissionStarted", "writing", 8, {**common, "mission_id": "writing", "attempt": 1, "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
+            ("508", "MissionFailed", "writing", 9, {**common, "mission_id": "writing", "attempt": 1, "answer": "lundes", "failureReason": "orthographic_error", "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
+            ("509", "MissionWritingHintShown", "writing", 10, {**common, "mission_id": "writing", "attempt": 1, "writing_hint_stage": 1, "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
+            ("510", "MissionSolved", "writing", 11, {**common, "mission_id": "writing", "attempt": 2, "answer": "lunes", "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
+        ]
+        for suffix, event_type, _, seconds, payload in items:
+            db.add(DeviceEvent(event_id=f"50000000-0000-4000-8000-000000000{suffix}", device_id=device_id, occurred_at=base + timedelta(seconds=seconds), received_at=utcnow(), event_type=event_type, payload=payload))
+        db.commit()
+
+    with SessionLocal() as db:
+        data = dashboard_data(db, db.get(Device, device_id), "all", None, None, "comprehension", "functional_1", "temporal_relations")
+    assert data["summary"]["comprehension_help"] == {"numerator": 1, "valid_missions": 2, "percentage": 50.0}
+    assert data["summary"]["orthographic_support"] == {"numerator": 1, "valid_missions": 2, "percentage": 50.0}
+    assert next(row for row in data["summary"]["help_distribution"] if row["label"] == "Sin dato")["missions"] == 1
+    assert data["rows"][0]["label"] == "¿Qué día fue ayer?"
+    executions = data["executions_by_variant"]["yesterday_weekday"]
+    help_execution = next(item for item in executions if item["mission_id"] == "help")
+    assert help_execution["question_text"] == "Hoy es martes. ¿Qué día fue ayer?"
+    assert [item["kind"] for item in help_execution["timeline"]] == ["attempt", "comprehension_help", "attempt"]
+    assert [item.get("answer") for item in help_execution["timeline"] if item["kind"] == "attempt"] == ["domingo", "lunes"]
+    writing_execution = next(item for item in executions if item["mission_id"] == "writing")
+    assert writing_execution["question_text"] is None
+    assert writing_execution["question_label"] == "¿Qué día fue ayer?"
+    assert writing_execution["timeline"][1]["label"] == "Apoyo de escritura"
+    historical = next(item for item in executions if item["mission_id"] == "historic")
+    assert historical["question_text"] is None
+    assert historical["max_help_label"] == "Sin dato"
