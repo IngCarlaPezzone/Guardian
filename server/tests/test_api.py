@@ -864,6 +864,57 @@ def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
     assert "Ayuda máxima" not in math.text
 
 
+def test_metrics_trends_group_daily_missions_and_attempts_with_empty_days():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abcf"
+    base = datetime(2026, 8, 20, 10, 0, tzinfo=timezone.utc)
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Trend-PC", token_hash=hash_secret("trend-token"), client_version="0.4.7", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="UTC", version=1))
+        missions = [
+            ("trend-math-add", 0, "math", "basic_operations_1", "addition", 1),
+            ("trend-comprehension-calendar", 0, "comprehension", "functional_1", "calendar", 2),
+            ("trend-math-subtract", 1, "math", "basic_operations_1", "subtraction", 3),
+            ("trend-comprehension-identity", 3, "comprehension", "functional_1", "identity", 1),
+        ]
+        for index, (mission_id, day_offset, category, level, skill, attempt) in enumerate(missions):
+            db.add(DeviceEvent(
+                event_id=f"60000000-0000-4000-8000-0000000000{index + 1:02d}",
+                device_id=device_id,
+                occurred_at=base + timedelta(days=day_offset),
+                received_at=utcnow(),
+                event_type="MissionSolved",
+                payload={"mission_id": mission_id, "category_id": category, "level_id": level, "skill_id": skill, "variant_id": "generated", "attempt": attempt},
+            ))
+        db.commit()
+
+    with SessionLocal() as db:
+        device = db.get(Device, device_id)
+        global_data = dashboard_data(db, device, "range", "2026-08-20", "2026-08-23", None, None, None)
+        category_data = dashboard_data(db, device, "range", "2026-08-20", "2026-08-23", "comprehension", None, None)
+        level_data = dashboard_data(db, device, "range", "2026-08-20", "2026-08-23", "comprehension", "functional_1", None)
+
+    assert [row["label"] for row in global_data["trends"]] == ["20/08/26", "21/08/26", "22/08/26", "23/08/26"]
+    assert [(row["missions"], row["attempts"]) for row in global_data["trends"]] == [(2, 3), (1, 3), (0, 0), (1, 1)]
+    first_day = {row["key"]: row for row in global_data["trends"][0]["series"]}
+    assert first_day["math"]["missions"] == 1
+    assert first_day["math"]["attempts"] == 1
+    assert first_day["comprehension"]["missions"] == 1
+    assert first_day["comprehension"]["attempts"] == 2
+    assert category_data["trend_dimension"] == "level"
+    assert {(row["key"], row["missions"], row["attempts"]) for row in category_data["trends"][0]["series"]} == {("functional_1", 1, 2)}
+    assert level_data["trend_dimension"] == "skill"
+    assert {row["key"] for row in level_data["trends"][0]["series"]} == {"calendar", "identity"}
+
+    ranged = client.get(f"/admin/devices/{device_id}/metrics?start=2026-08-20&end=2026-08-23")
+    today = client.get(f"/admin/devices/{device_id}/metrics")
+    assert ranged.status_code == 200
+    assert "Misiones e intentos por día" in ranged.text
+    assert "metrics-trends.js" in ranged.text
+    assert 'data-metrics-trend' in ranged.text
+    assert "Misiones e intentos por día" not in today.text
+
+
 def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
     device_id = "00000000-0000-4000-8000-00000000abc6"
     base = datetime(2026, 9, 1, 18, 42, tzinfo=timezone.utc)

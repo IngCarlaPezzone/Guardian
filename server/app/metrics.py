@@ -105,6 +105,11 @@ def payload_value(payload: dict, key: str, legacy_key: str | None = None):
     return payload.get(legacy_key) if legacy_key and legacy_key in payload else None
 
 
+def as_utc(value: datetime) -> datetime:
+    # SQLite de tests devuelve timestamps sin zona, mientras PostgreSQL conserva UTC.
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
 @dataclass
 class MissionRecord:
     mission_id: str
@@ -301,7 +306,7 @@ def group_rows(records: list[MissionRecord], dimension: str) -> list[dict]:
 def daily_rows(records: list[MissionRecord], tz: ZoneInfo) -> list[dict]:
     grouped: dict[tuple[str, str], int] = defaultdict(int)
     for record in records:
-        day = record.solved_at.astimezone(tz).date().isoformat()
+        day = as_utc(record.solved_at).astimezone(tz).date().isoformat()
         grouped[(day, record.category_id or "legacy")] += 1
     by_day: dict[str, list[dict]] = defaultdict(list)
     for (day, category), count in sorted(grouped.items()):
@@ -314,6 +319,59 @@ def daily_rows(records: list[MissionRecord], tz: ZoneInfo) -> list[dict]:
         {"day": day, "categories": categories, "missions": sum(item["missions"] for item in categories)}
         for day, categories in by_day.items()
     ]
+
+
+def trend_dimension(category: str | None, level: str | None) -> str | None:
+    if not category:
+        return "category"
+    if not level:
+        return "level"
+    return "skill"
+
+
+def trend_key_and_label(record: MissionRecord, dimension: str) -> tuple[str, str]:
+    if dimension == "category":
+        key = record.category_id or "legacy"
+        return key, scope_label(record.category_id) if record.category_id else "Histórico sin clasificar"
+    if dimension == "level":
+        key = record.level_id or "legacy"
+        return key, scope_label(record.category_id, record.level_id) if record.category_id and record.level_id else "Histórico sin clasificar"
+    key = record.skill_id or "legacy"
+    return key, scope_label(record.category_id, record.level_id, record.skill_id) if record.category_id and record.level_id and record.skill_id else "Histórico sin clasificar"
+
+
+def trend_rows(records: list[MissionRecord], tz: ZoneInfo, start: date | None, end: date | None, dimension: str | None) -> list[dict]:
+    if not dimension or not start or not end or start >= end:
+        return []
+    series_labels: dict[str, str] = {}
+    values: dict[tuple[str, str], dict] = defaultdict(lambda: {"missions": 0, "attempts": 0, "attempt_valid_missions": 0})
+    for record in records:
+        day = as_utc(record.solved_at).astimezone(tz).date().isoformat()
+        key, label = trend_key_and_label(record, dimension)
+        series_labels[key] = label
+        bucket = values[(day, key)]
+        bucket["missions"] += 1
+        if record.attempts is not None:
+            bucket["attempts"] += record.attempts
+            bucket["attempt_valid_missions"] += 1
+    rows = []
+    current = start
+    while current <= end:
+        day = current.isoformat()
+        series = [
+            {"key": key, "label": label, **values[(day, key)]}
+            for key, label in sorted(series_labels.items(), key=lambda item: item[1])
+        ]
+        rows.append({
+            "day": day,
+            "label": current.strftime("%d/%m/%y"),
+            "missions": sum(item["missions"] for item in series),
+            "attempts": sum(item["attempts"] for item in series),
+            "attempt_valid_missions": sum(item["attempt_valid_missions"] for item in series),
+            "series": series,
+        })
+        current += timedelta(days=1)
+    return rows
 
 
 def help_label(level: int | None) -> str | None:
@@ -354,16 +412,17 @@ def execution_detail(record: MissionRecord, tz: tzinfo) -> dict:
 
 def dashboard_data(db: Session, device: Device, period: str, start: str | None, end: str | None, category: str | None, level: str | None, skill: str | None) -> dict:
     tz = device_timezone(device)
-    _, _, _, start_utc, end_utc, _ = resolved_period(period, tz, start, end)
+    _, resolved_start, resolved_end, start_utc, end_utc, _ = resolved_period(period, tz, start, end)
     # Los intentos de una misión pueden cruzar el límite del período. Se cargan sólo
     # eventos de misión del dispositivo y luego se filtra por la fecha de resolución,
     # conservando el MissionStarted necesario para la métrica experimental de tiempo.
     query = db.query(DeviceEvent).filter(DeviceEvent.device_id == device.id, DeviceEvent.event_type.in_(MISSION_EVENTS))
     records = mission_records(query.order_by(DeviceEvent.occurred_at.asc(), DeviceEvent.event_id.asc()).all())
     if start_utc is not None:
-        records = [record for record in records if start_utc <= record.solved_at < end_utc]
+        records = [record for record in records if start_utc <= as_utc(record.solved_at) < end_utc]
     records = [record for record in records if matches_scope(record, category, level, skill)]
     dimension = "category" if not category else "level" if not level else "skill" if not skill else "variant"
+    trend_dimension_value = trend_dimension(category, level) if not skill else None
     return {
         "timezone": str(tz),
         "summary": summarize(records, category),
@@ -371,6 +430,8 @@ def dashboard_data(db: Session, device: Device, period: str, start: str | None, 
         "variants": group_rows(records, "variant") if skill else [],
         "executions_by_variant": {variant: [execution_detail(record, tz) for record in sorted([candidate for candidate in records if candidate.variant_id == variant], key=lambda candidate: (candidate.solved_at, candidate.mission_id), reverse=True)] for variant in {record.variant_id for record in records if record.variant_id}} if skill else {},
         "daily": daily_rows(records, tz),
+        "trends": trend_rows(records, tz, resolved_start, resolved_end, trend_dimension_value),
+        "trend_dimension": trend_dimension_value,
         "scope_label": scope_label(category, level, skill),
         "record_count": len(records),
     }
