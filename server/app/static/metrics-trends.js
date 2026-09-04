@@ -20,12 +20,19 @@
     skills: ["#7656a8", "#b15f92", "#2f7f96", "#a56d35", "#5d788f", "#9b5e62"],
   };
   const colorFor = (key, index, category, global) => global ? (colors[key] || colors.other) : (palettes[category] || palettes.skills)[index % (palettes[category] || palettes.skills).length];
-  const addLegendEntry = (legend, kind, color, label) => {
+  const addLegendEntry = (group, kind, color, label) => {
     const entry = document.createElement("span"), marker = document.createElement("i");
     marker.className = `trend-legend-${kind}`;
     marker.style.setProperty("--series", color);
     entry.append(marker, document.createTextNode(label));
-    legend.append(entry);
+    group.append(entry);
+  };
+  const addLegendGroup = (legend, color, label, includeMissions) => {
+    const group = document.createElement("div");
+    group.className = "trend-legend-group";
+    if (includeMissions) addLegendEntry(group, "bar", color, `Misiones · ${label}`);
+    addLegendEntry(group, "line", color, `Intentos · ${label}`);
+    legend.append(group);
   };
   const addTooltip = (host) => {
     const tip = document.createElement("div");
@@ -53,15 +60,16 @@
     }));
     const legend = document.createElement("div");
     legend.className = "trend-legend";
-    if (global) addLegendEntry(legend, "line", colors.total, "Intentos · Total");
+    if (global) addLegendGroup(legend, colors.total, "Total", false);
     series.forEach((item, index) => {
       const color = colorFor(item.key, index, category, global);
-      addLegendEntry(legend, "bar", color, `Misiones · ${item.label}`);
-      addLegendEntry(legend, "line", color, `Intentos · ${item.label}`);
+      addLegendGroup(legend, color, item.label, true);
     });
     host.append(legend);
 
     const width = Math.max(600, points.length * 68), height = 245, left = 48, right = 48, top = 18, bottom = 62;
+    host.classList.toggle("trend-chart-compact", width <= 600);
+    legend.style.width = `${width}px`;
     const plotWidth = width - left - right, plotHeight = height - top - bottom;
     const missionMax = maxWithHeadroom(points.map((point) => point.missions)), attemptMax = maxWithHeadroom(points.map((point) => point.attempts));
     const chart = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "Evolución diaria de misiones e intentos" });
@@ -95,7 +103,9 @@
     const lineValues = [];
     const drawLine = (label, values, color) => {
       lineValues.push({ label, values });
-      chart.append(svg("path", { d: values.map((value, index) => `${index ? "L" : "M"}${x(index)} ${yAttempt(value)}`).join(" "), fill: "none", stroke: color, class: "trend-line" }));
+      const path = values.map((value, index) => `${index ? "L" : "M"}${x(index)} ${yAttempt(value)}`).join(" ");
+      chart.append(svg("path", { d: path, fill: "none", stroke: "#344054", class: "trend-line trend-line-outline" }));
+      chart.append(svg("path", { d: path, fill: "none", stroke: color, class: "trend-line" }));
       values.forEach((value, index) => chart.append(svg("circle", { cx: x(index), cy: yAttempt(value), r: 3.7, fill: color, class: "trend-point" })));
     };
     if (global) drawLine("Intentos · Total", points.map((point) => point.attempts), colors.total);
