@@ -101,7 +101,7 @@ La corrección fue integrada en `main` y la release `0.4.4` quedó registrada en
 
 ## Versionado y promoción
 
-La base estable actual del repositorio es `0.4.7`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+La base estable actual del repositorio es `0.4.8`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
 
 No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. La RC `0.4.3-rc.3` se probó integralmente en STG —incluido updater—; `0.4.3` y la corrección `0.4.4` están registradas en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
 
@@ -140,14 +140,16 @@ La importación sanitizada también fue validada manualmente contra PROD: la pri
 
 Nunca se utiliza una feature branch sobre PROD para una vista previa visual o funcional.
 
-## Stage 3 — Admin y métricas (servidor/Admin en PROD; cliente 0.4.7 publicado)
+## Stage 3 — Admin y métricas (servidor/Admin en PROD; cliente 0.4.8 publicado)
 
-Stage 3A/3B de servidor/Admin está desplegado en PROD desde main. Las migraciones 0005_device_timezone y 0006_device_kind llegaron a head con datos existentes preservados. Los clientes anteriores continúan funcionando y reportando heartbeats/RemoteConfig. El cliente Guardian 0.4.7 fue validado en STG y está publicado en PROD; su validación controlada por dispositivo continúa el rollout obligatorio PC TEST → dispositivo productivo final.
+Stage 3A/3B de servidor/Admin está desplegado en PROD desde main. Las migraciones 0005_device_timezone y 0006_device_kind llegaron a head con datos existentes preservados. Los clientes anteriores continúan funcionando y reportando heartbeats/RemoteConfig. El cliente Guardian 0.4.8 está publicado en PROD; su validación controlada por dispositivo continúa el rollout obligatorio PC TEST → dispositivo productivo final.
 
 - Admin con cards compactas: `display_name` principal, hostname secundario, estado operativo y acciones remotas agrupadas.
 - Configuración unificada de nombre visible, intervalo, skills y perfil privado; la zona horaria es técnica, automática y no editable en Admin.
 - Activity con fecha y hora local del dispositivo, filtros de período, categorías humanas, eventos técnicos opcionales y resumen compacto. El payload JSON queda persistido en servidor, pero la tabla actual no lo muestra ni expone las respuestas escritas.
 - Métricas agregadas server-side por `mission_id`, con compatibilidad `missionId`, reintentos deduplicados, drill-down Global → Categoría → Nivel → Skill y variantes bajo demanda. Global usa métricas comunes; Comprensión muestra ayudas y ortografía, mientras Matemática conserva su distribución por intento.
+- Para rangos de dos o más días, Métricas muestra tendencias diarias: misiones como barras apiladas e intentos como líneas con doble eje Y. Global desglosa categorías; Categoría desglosa niveles; Nivel desglosa habilidades con paleta secundaria. Las líneas y barras conservan tooltips exactos y el JavaScript de tendencias usa hash para evitar caché obsoleto.
+- Matemática valida respuestas por valor numérico con formato argentino, incluidos ceros a la izquierda, puntos de miles válidos y coma decimal. Los formatos ambiguos permanecen inválidos y Comprensión no cambia.
 - La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC. El cliente `0.4.6` reporta su offset local en registro y heartbeat; los clientes `0.4.4` compatibles conservan `UTC` hasta actualizarse.
 - El Dashboard muestra por defecto sólo dispositivos `operational`. La migración `0006_device_kind` clasifica explícitamente fixtures `stg_demo` e importaciones `stg_imported_telemetry`, sin deduplicar por hostname; esos registros siguen disponibles para Activity/Métricas y pueden revisarse de forma deliberada en `/admin/?show_synthetic=true`.
 

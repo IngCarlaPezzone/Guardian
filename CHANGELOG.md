@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.8 — Respuestas numéricas argentinas y tendencias de métricas
+
+- Matemática compara valores numéricos con formato argentino: acepta ceros a la izquierda, coma decimal y puntos de miles válidos, sin reinterpretar formatos ambiguos. Comprensión conserva su normalización anterior.
+- Métricas incorpora tendencias diarias para rangos de dos o más fechas: barras de misiones y líneas de intentos con doble eje Y, drill-down Global → Categoría → Nivel. La vista de Habilidad mantiene su detalle sin un gráfico adicional.
+- Los gráficos usan tooltips con valores exactos, leyendas que diferencian barras y líneas, colores semánticos para totales/categorías y una paleta secundaria estable para Habilidades. El asset JavaScript se versiona por hash para evitar datos visuales cacheados.
+- El servidor/Admin y la release cliente `0.4.8` fueron publicados en PROD. La actualización de dispositivos continúa siendo manual y debe comenzar por PC TEST.
+
 ## 0.4.7 — Ayudas explícitas y métricas por categoría
 
 - Las ayudas de comprensión avanzan sólo después de un nuevo intento semántico incorrecto tras solicitar el nivel anterior. Los errores ortográficos mantienen su flujo independiente y no desbloquean ayudas de comprensión.
