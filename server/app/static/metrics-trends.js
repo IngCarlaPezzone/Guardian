@@ -17,9 +17,13 @@
   const palettes = {
     math: [colors.math, "#5a9b77", "#87b89b", "#1f6748"],
     comprehension: [colors.comprehension, "#d69a64", "#e5b98f", "#9d5d2e"],
-    skills: ["#7656a8", "#b15f92", "#2f7f96", "#a56d35", "#5d788f", "#9b5e62"],
+    skills: ["#7656a8", "#b15f92", "#2f7f96", "#a56d35", "#5d788f", "#9b5e62", "#4f6fad", "#a46482", "#3c8c8a", "#8a6b3d", "#6c5d9e", "#7d7280"],
   };
-  const colorFor = (key, index, category, global) => global ? (colors[key] || colors.other) : (palettes[category] || palettes.skills)[index % (palettes[category] || palettes.skills).length];
+  const colorFor = (key, index, category, dimension, global) => {
+    if (global) return colors[key] || colors.other;
+    const palette = dimension === "skill" ? palettes.skills : (palettes[category] || palettes.skills);
+    return palette[index % palette.length];
+  };
   const addLegendEntry = (group, kind, color, label) => {
     const entry = document.createElement("span"), marker = document.createElement("i");
     marker.className = `trend-legend-${kind}`;
@@ -54,14 +58,14 @@
 
   document.querySelectorAll("[data-metrics-trend]").forEach((host) => {
     const points = JSON.parse(host.querySelector(".trend-data").textContent);
-    const category = host.dataset.category, global = host.dataset.global === "true", series = [], known = new Set();
+    const category = host.dataset.category, dimension = host.dataset.dimension, global = host.dataset.global === "true", series = [], known = new Set();
     points.forEach((point) => point.series.forEach((item) => {
       if (!known.has(item.key)) { known.add(item.key); series.push({ key: item.key, label: item.label }); }
     }));
     const legend = document.createElement("div");
     legend.className = "trend-legend";
     series.forEach((item, index) => {
-      const color = colorFor(item.key, index, category, global);
+      const color = colorFor(item.key, index, category, dimension, global);
       addLegendGroup(legend, color, item.label, true);
     });
     if (global) addLegendGroup(legend, colors.total, "Total", false);
@@ -92,7 +96,7 @@
       point.series.forEach((item, seriesIndex) => {
         if (!item.missions) return;
         const segmentHeight = item.missions / missionMax * plotHeight;
-        const rect = svg("rect", { x: x(index) - barWidth / 2, y: top + plotHeight - stacked - segmentHeight, width: barWidth, height: segmentHeight, fill: colorFor(item.key, seriesIndex, category, global), class: "trend-bar" });
+        const rect = svg("rect", { x: x(index) - barWidth / 2, y: top + plotHeight - stacked - segmentHeight, width: barWidth, height: segmentHeight, fill: colorFor(item.key, seriesIndex, category, dimension, global), class: "trend-bar" });
         rect.addEventListener("mousemove", (event) => tooltip.show(event, [point.label, `Misiones: ${point.missions}`, ...point.series.map((entry) => `${entry.label}: ${entry.missions}`)]));
         rect.addEventListener("mouseleave", tooltip.hide);
         chart.append(rect);
@@ -109,7 +113,7 @@
       values.forEach((value, index) => chart.append(svg("circle", { cx: x(index), cy: yAttempt(value), r: 3.7, fill: color, class: "trend-point" })));
     };
     if (global) drawLine("Intentos · Total", points.map((point) => point.attempts), colors.total);
-    series.forEach((item, index) => drawLine(`Intentos · ${item.label}`, points.map((point) => (point.series.find((entry) => entry.key === item.key) || { attempts: 0 }).attempts), colorFor(item.key, index, category, global)));
+    series.forEach((item, index) => drawLine(`Intentos · ${item.label}`, points.map((point) => (point.series.find((entry) => entry.key === item.key) || { attempts: 0 }).attempts), colorFor(item.key, index, category, dimension, global)));
     points.forEach((point, index) => {
       const coordinates = new Set(lineValues.map((line) => yAttempt(line.values[index]).toFixed(2)));
       coordinates.forEach((y) => {
