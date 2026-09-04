@@ -60,11 +60,11 @@
     }));
     const legend = document.createElement("div");
     legend.className = "trend-legend";
-    if (global) addLegendGroup(legend, colors.total, "Total", false);
     series.forEach((item, index) => {
       const color = colorFor(item.key, index, category, global);
       addLegendGroup(legend, color, item.label, true);
     });
+    if (global) addLegendGroup(legend, colors.total, "Total", false);
     host.append(legend);
 
     const width = Math.max(600, points.length * 68), height = 245, left = 48, right = 48, top = 18, bottom = 62;
