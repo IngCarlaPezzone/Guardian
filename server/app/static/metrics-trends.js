@@ -104,7 +104,7 @@
     const drawLine = (label, values, color) => {
       lineValues.push({ label, values });
       const path = values.map((value, index) => `${index ? "L" : "M"}${x(index)} ${yAttempt(value)}`).join(" ");
-      chart.append(svg("path", { d: path, fill: "none", stroke: "#344054", class: "trend-line trend-line-outline" }));
+      chart.append(svg("path", { d: path, fill: "none", stroke: "#667085", class: "trend-line trend-line-outline" }));
       chart.append(svg("path", { d: path, fill: "none", stroke: color, class: "trend-line" }));
       values.forEach((value, index) => chart.append(svg("circle", { cx: x(index), cy: yAttempt(value), r: 3.7, fill: color, class: "trend-point" })));
     };
