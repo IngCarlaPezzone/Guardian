@@ -33,6 +33,8 @@ def admin_title_with_section(section: str) -> str:
 templates.env.globals["admin_title_with_section"] = admin_title_with_section
 ADMIN_CSS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "admin.css").read_bytes()).hexdigest()[:12]
 templates.env.globals["admin_css_version"] = ADMIN_CSS_VERSION
+ADMIN_TRENDS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "metrics-trends.js").read_bytes()).hexdigest()[:12]
+templates.env.globals["admin_trends_version"] = ADMIN_TRENDS_VERSION
 ADMIN_ICON_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "guardian.png").read_bytes()).hexdigest()[:12]
 templates.env.globals["admin_icon_version"] = ADMIN_ICON_VERSION
 

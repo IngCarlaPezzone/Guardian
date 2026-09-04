@@ -6,7 +6,7 @@
   <title>{{ admin_title_with_section("Métricas") }}</title>
   <link rel="icon" type="image/png" href="/admin/static/guardian.png?v={{ admin_icon_version }}">
   <link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}">
-  <script defer src="/admin/static/metrics-trends.js"></script>
+  <script defer src="/admin/static/metrics-trends.js?v={{ admin_trends_version }}"></script>
 </head>
 <body>
   <header><h1 class="admin-brand"><img src="/admin/static/guardian.png" alt="" title="{{ admin_title_with_section("Métricas") }}"> {{ admin_title_with_section("Métricas") }}</h1><nav class="header-actions"><a class="button secondary" href="/admin/">Dispositivos</a><a class="button secondary" href="/admin/devices/{{ device.id }}/missions">Configuración</a><a class="button secondary" href="/admin/devices/{{ device.id }}/activity">Actividad</a></nav></header>
