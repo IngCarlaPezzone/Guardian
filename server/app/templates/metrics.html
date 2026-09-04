@@ -6,6 +6,7 @@
   <title>{{ admin_title_with_section("Métricas") }}</title>
   <link rel="icon" type="image/png" href="/admin/static/guardian.png?v={{ admin_icon_version }}">
   <link rel="stylesheet" href="/admin/static/admin.css?v={{ admin_css_version }}">
+  <script defer src="/admin/static/metrics-trends.js"></script>
 </head>
 <body>
   <header><h1 class="admin-brand"><img src="/admin/static/guardian.png" alt="" title="{{ admin_title_with_section("Métricas") }}"> {{ admin_title_with_section("Métricas") }}</h1><nav class="header-actions"><a class="button secondary" href="/admin/">Dispositivos</a><a class="button secondary" href="/admin/devices/{{ device.id }}/missions">Configuración</a><a class="button secondary" href="/admin/devices/{{ device.id }}/activity">Actividad</a></nav></header>
@@ -23,6 +24,7 @@
         </div>
       </article>
       {% if category == 'comprehension' and not skill %}<div class="metrics-grid"><article class="card"><h3>Máximo apoyo de comprensión</h3><table class="metrics-table"><thead><tr><th class="text-column">Máximo apoyo</th><th>Misiones</th><th>%</th></tr></thead><tbody>{% for row in data.summary.help_distribution %}<tr><td class="text-column">{{ row.label }}</td><td>{{ row.missions }}</td><td>{% if row.percentage is not none %}{{ row.percentage }}%{% else %}Sin dato{% endif %}</td></tr>{% endfor %}</tbody></table></article><article class="card"><h3>Máximo apoyo ortográfico</h3><table class="metrics-table"><thead><tr><th class="text-column">Máximo apoyo</th><th>Misiones</th><th>%</th></tr></thead><tbody>{% for row in data.summary.writing_distribution %}<tr><td class="text-column">{{ row.label }}</td><td>{{ row.missions }}</td><td>{% if row.percentage is not none %}{{ row.percentage }}%{% else %}Sin dato{% endif %}</td></tr>{% endfor %}</tbody></table></article></div>{% endif %}
+      {% if data.trends|length > 1 %}<article class="card trend-card"><h3>{% if not category %}Misiones e intentos por día{% elif not level %}Misiones e intentos por nivel{% else %}Misiones e intentos por habilidad{% endif %}</h3><div class="trend-chart" data-metrics-trend data-category="{{ category or '' }}" data-global="{{ 'true' if not category else 'false' }}"><script type="application/json" class="trend-data">{{ data.trends|tojson }}</script></div></article>{% endif %}
     </section>
   </main>
 </body>

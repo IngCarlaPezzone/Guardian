@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -2512,6 +2513,22 @@ namespace Guardian
         {
             var analysis = new MissionAnswerAnalysis { Result = MissionAnswerResult.Invalid };
             if (string.IsNullOrWhiteSpace(input) || mission == null || mission.AcceptedAnswers == null) return analysis;
+            if (string.Equals(mission.CategoryId, "math", StringComparison.OrdinalIgnoreCase))
+            {
+                decimal actual;
+                if (!TryParseArgentineNumber(input, out actual)) return analysis;
+                foreach (var answer in mission.AcceptedAnswers)
+                {
+                    decimal expected;
+                    if (TryParseArgentineNumber(answer, out expected) && actual == expected)
+                    {
+                        analysis.Result = MissionAnswerResult.Correct;
+                        return analysis;
+                    }
+                }
+                analysis.Result = MissionAnswerResult.Wrong;
+                return analysis;
+            }
             var normalized = NormalizeForMission(input, mission);
             foreach (var answer in mission.AcceptedAnswers)
             {
@@ -2540,6 +2557,16 @@ namespace Guardian
         }
 
         private static bool IsDigits(string value) { if (string.IsNullOrEmpty(value)) return false; foreach (var c in value) if (!char.IsDigit(c)) return false; return true; }
+
+        // En Matemática, la coma es decimal y el punto sólo puede separar grupos de miles.
+        // La expresión evita reinterpretar entradas ambiguas como "7.0" o "1.00".
+        private static bool TryParseArgentineNumber(string value, out decimal number)
+        {
+            number = 0m;
+            var text = (value ?? "").Trim();
+            if (!Regex.IsMatch(text, "^(?:\\d+|\\d{1,3}(?:\\.\\d{3})+)(?:,\\d+)?$")) return false;
+            return decimal.TryParse(text.Replace(".", "").Replace(',', '.'), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out number);
+        }
 
         public static WritingDifference DescribeDifference(string input, string expected)
         {
@@ -3309,6 +3336,9 @@ namespace Guardian
             var surname = new Mission { AcceptedAnswers = new List<string> { "Pereira" } };
             var season = new Mission { AcceptedAnswers = new List<string> { "invierno" } };
             var number = new Mission { AcceptedAnswers = new List<string> { "7" } };
+            var mathSeven = new Mission { CategoryId = "math", AcceptedAnswers = new List<string> { "7" } };
+            var mathThousand = new Mission { CategoryId = "math", AcceptedAnswers = new List<string> { "1000" } };
+            var mathOne = new Mission { CategoryId = "math", AcceptedAnswers = new List<string> { "1" } };
             var date = new Mission { AcceptsNaturalLanguageDate = true, AcceptedAnswers = new List<string> { "26 de noviembre" } };
             if (MissionValidator.Validate("otño", autumn) != MissionAnswerResult.OrthographicNearMatch) failures.Add("missing-letter autumn should be spelling near match");
             if (MissionValidator.Validate("OTONO", autumn) != MissionAnswerResult.Correct) failures.Add("accent normalization should remain correct");
@@ -3316,6 +3346,11 @@ namespace Guardian
             if (MissionValidator.Validate("Bauti", surname) != MissionAnswerResult.Wrong) failures.Add("distant text must be wrong");
             if (MissionValidator.Validate("verano", season) != MissionAnswerResult.Wrong) failures.Add("semantic season mismatch must be wrong");
             if (MissionValidator.Validate("8", number) != MissionAnswerResult.Wrong) failures.Add("numbers must not use spelling flow");
+            foreach (var value in new[] { "7", "07", "007", " 07 " }) if (MissionValidator.Validate(value, mathSeven) != MissionAnswerResult.Correct) failures.Add("math leading zero answer should be correct: " + value);
+            foreach (var value in new[] { "7.0", "7a" }) if (MissionValidator.Validate(value, mathSeven) != MissionAnswerResult.Invalid) failures.Add("invalid Argentine math format should be invalid: " + value);
+            foreach (var value in new[] { "1000", "1.000", "01.000" }) if (MissionValidator.Validate(value, mathThousand) != MissionAnswerResult.Correct) failures.Add("math thousand answer should be correct: " + value);
+            foreach (var value in new[] { "1.00", "10.00" }) if (MissionValidator.Validate(value, mathThousand) != MissionAnswerResult.Invalid) failures.Add("invalid thousand grouping should be invalid: " + value);
+            foreach (var value in new[] { "1", "01", "1,0", "1,00", "01,000" }) if (MissionValidator.Validate(value, mathOne) != MissionAnswerResult.Correct) failures.Add("math decimal equivalent should be correct: " + value);
             if (MissionValidator.Validate("26 de noviembre", date) != MissionAnswerResult.Correct) failures.Add("date with de should remain correct");
             if (MissionValidator.Validate("26 noviembre", date) != MissionAnswerResult.Correct) failures.Add("date without de should be correct");
             if (MissionValidator.Validate("26 Noviembre", date) != MissionAnswerResult.Correct) failures.Add("date comparison should remain case-insensitive");
