@@ -12,6 +12,9 @@ from server.app.models import Device, DeviceEvent
 
 
 CATALOG = {
+    "visual_story": {"label": "Visual Story", "levels": {
+        "location": {"label": "Microhistoria", "skills": {"home": "Dónde vivís"}},
+    }},
     "math": {"label": "Matemática", "levels": {
         "basic_operations_1": {"label": "Operaciones básicas", "skills": {
             "addition": "Sumas", "subtraction": "Restas", "multiplication": "Multiplicaciones",

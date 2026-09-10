@@ -63,7 +63,7 @@
             <section class="mission-category mission-category-{{ category }}">
               <div class="mission-category-heading">
                 <span class="hierarchy-label">Categoría</span>
-                <h3>{{ 'Matemática' if category == 'math' else 'Comprensión' }}</h3>
+                <h3>{{ 'Matemática' if category == 'math' else 'Comprensión' if category == 'comprehension' else 'Visual Story' }}</h3>
               </div>
               <div class="mission-level-list">
               {% for _, level_id, title, tooltip, skills in category_levels %}

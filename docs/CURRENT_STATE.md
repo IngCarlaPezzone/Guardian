@@ -1,5 +1,11 @@
 # Estado actual — Guardian
 
+## POC Visual Story en feature branch
+
+La rama `feature/visual-story-donde-vivis-poc` agrega una POC todavía no promovida ni desplegada en PROD: **Visual Story → Dónde vivís**. Puede configurarse como única misión desde Admin y reutiliza el intervalo, RemoteConfig, bloqueo y telemetría existentes. La experiencia WPF offline dura 13,6 segundos, incluye narración embebida, preview con scrub/reinicio y cinco capturas representativas.
+
+La operación y la validación exclusiva en PC TEST STG están documentadas en `docs/Guardian_VISUAL_STORY_POC.md`. No hay migraciones, endpoints nuevos ni cambios del updater. Esta sección debe actualizarse o retirarse al promover o descartar la POC.
+
 ## Entornos
 
 Guardian opera con dos entornos aislados.

@@ -236,6 +236,7 @@ namespace Guardian
         private static readonly string[] Months = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
         private static readonly string[] Seasons = { "invierno", "primavera", "verano", "otoño" };
         private static readonly HashSet<string> AlwaysAvailableSkills = new HashSet<string>(StringComparer.Ordinal) {
+            VisualStoryDefinition.SkillKey,
             "math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication",
             "math.basic_operations_1.exact_division_one_digit", "math.basic_operations_1.exact_division_two_digits",
             "math.basic_operations_1.exact_division_tens", "math.basic_operations_1.multiply_by_powers_of_ten",
@@ -262,6 +263,7 @@ namespace Guardian
         public Mission Generate(string key, PrivateMissionProfile p, Dictionary<string, string> last, Random r)
         {
             if (!CanGenerate(key, p)) return null;
+            if (key == VisualStoryDefinition.SkillKey) return VisualStoryDefinition.CreateMission();
             if (key.StartsWith("math.basic_operations_1.", StringComparison.Ordinal)) return BasicMathMission(key, r);
             if (key.StartsWith("math.word_problems_1.", StringComparison.Ordinal)) return WordProblem(key, last, r);
             if (key.EndsWith(".identity")) return Identity(p, last, r);

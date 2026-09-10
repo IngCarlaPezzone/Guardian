@@ -664,11 +664,13 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     assert "Situaciones problemáticas" in page.text
     assert "Ubicación personal" in page.text
     assert "Información explícita en una oración" in page.text
+    assert "Visual Story" in page.text
+    assert "Dónde vivís" in page.text
     assert "aria-label" in page.text
     assert page.text.count("<h3>Matemática</h3>") == 1
     assert page.text.count("<h3>Comprensión</h3>") == 1
-    assert page.text.count('class="hierarchy-label">Nivel</span>') == 4
-    assert page.text.count('class="hierarchy-label">Habilidades</span>') == 4
+    assert page.text.count('class="hierarchy-label">Nivel</span>') == 5
+    assert page.text.count('class="hierarchy-label">Habilidades</span>') == 5
 
     response = client.post(f"/admin/devices/{device_id}/config", data={
         "display_name": "Mission Test", "interval_minutes": "15", "missions_submitted": "1",
@@ -704,6 +706,32 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
         assert profile.city == "Ciudad Ejemplo"
         assert profile.province == "Provincia Ejemplo"
         assert profile.country == "País Ejemplo"
+
+
+def test_visual_story_can_be_the_only_enabled_mission_and_reaches_remote_config():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc9"
+    token = "visual-story-test-token"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Visual-Story-Test-PC", token_hash=hash_secret(token), client_version="0.4.10-staging-visual-story.1", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=3, mission_config={"enabledSkills": ["math.basic_operations_1.addition"]}))
+        db.commit()
+
+    response = client.post(f"/admin/devices/{device_id}/config", data={
+        "display_name": "Visual Story Test", "interval_minutes": "2", "missions_submitted": "1",
+        "enabled_skills": ["visual_story.location.home"],
+    }, follow_redirects=False)
+    assert response.status_code == 303
+
+    remote = client.get(f"/api/v1/devices/{device_id}/config", headers={"Authorization": f"Bearer {token}"})
+    assert remote.status_code == 200
+    assert remote.json()["interval_seconds"] == 120
+    assert remote.json()["mission_config"]["EnabledSkills"] == ["visual_story.location.home"]
+
+    with SessionLocal() as db:
+        config = db.query(DeviceConfiguration).filter(DeviceConfiguration.device_id == device_id).one()
+        assert config.version == 4
+        assert config.mission_config == {"enabledSkills": ["visual_story.location.home"]}
 
 
 def test_configuration_update_controls_are_stable_and_reuse_update_command_flow():

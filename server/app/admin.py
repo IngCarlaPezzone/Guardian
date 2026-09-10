@@ -41,6 +41,9 @@ ADMIN_ICON_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "guardia
 templates.env.globals["admin_icon_version"] = ADMIN_ICON_VERSION
 
 MISSION_LEVELS = [
+    ("visual_story", "location", "Microhistoria", "Experiencia visual breve sin preguntas ni respuestas.", [
+        ("visual_story.location.home", "Dónde vivís", "Recorrido visual desde la Tierra hasta un hogar conceptual en Plottier."),
+    ]),
     ("math", "basic_operations_1", "Operaciones básicas", "Operaciones matemáticas básicas.", [
         ("math.basic_operations_1.addition", "Sumas", "Resolver sumas básicas."),
         ("math.basic_operations_1.subtraction", "Restas", "Resolver restas básicas."),
@@ -84,7 +87,7 @@ def is_device_online(device: Device) -> bool:
 
 
 EVENT_GROUPS = {
-    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionFailed", "MissionSolved"],
+    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionFailed", "MissionSolved", "VisualStoryStarted", "VisualStoryCompleted"],
     "config": ["RemoteConfigFetched", "RemoteConfigReceived", "RemoteConfigApplied", "RemoteConfigFailed"],
     "updates": [
         "UpdateCommandReceived",
@@ -144,7 +147,7 @@ def to_admin_time(value: datetime | None):
 
 def event_summary(event: DeviceEvent) -> str:
     payload = event.payload or {}
-    if event.event_type in {"MissionStarted", "MissionFailed", "MissionSolved"}:
+    if event.event_type in {"MissionStarted", "MissionFailed", "MissionSolved", "VisualStoryStarted", "VisualStoryCompleted"}:
         category = payload.get("category_id")
         level = payload.get("level_id")
         skill = payload.get("skill_id")
@@ -187,6 +190,7 @@ def event_summary(event: DeviceEvent) -> str:
 def event_label(event_type: str) -> str:
     labels = {
         "MissionStarted": "Misión iniciada", "MissionFailed": "Misión con reintento", "MissionSolved": "Misión resuelta",
+        "VisualStoryStarted": "Visual Story iniciada", "VisualStoryCompleted": "Visual Story completada",
         "RemoteConfigApplied": "Configuración aplicada", "UpdateCompleted": "Actualización completada",
         "UpdateFailed": "Actualización fallida", "MonitoringPaused": "Misiones pausadas", "MonitoringResumed": "Misiones reanudadas",
     }

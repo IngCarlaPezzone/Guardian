@@ -44,6 +44,10 @@ namespace Guardian
                     NativeConsole.Attach();
                     return SelfTest.Run();
                 }
+                if (command.Has("--visual-story-preview") || !string.IsNullOrWhiteSpace(command.Value("--visual-story-capture")))
+                {
+                    return VisualStoryPreview.Run(command);
+                }
                 if (command.Has("--install-startup"))
                 {
                     NativeConsole.Attach();
@@ -949,6 +953,7 @@ namespace Guardian
         private bool _suspended;
         private bool _missionActive;
         private LockWindow _lockWindow;
+        private VisualStoryWindow _visualStoryWindow;
         private MediaInterruptionSession _mediaSession;
         private GuardianTray _tray;
         private bool _monitoringEnabled;
@@ -1037,6 +1042,12 @@ namespace Guardian
                 _lockWindow.Close();
                 _lockWindow = null;
             }
+            if (_visualStoryWindow != null)
+            {
+                _visualStoryWindow.AllowProgrammaticClose();
+                _visualStoryWindow.Close();
+                _visualStoryWindow = null;
+            }
             _logger.Log("UsageCounterPaused", new Dictionary<string, object> { { "reason", reason } });
             _logger.Log("MonitoringPaused", new Dictionary<string, object>
             {
@@ -1108,6 +1119,11 @@ namespace Guardian
             _missionUnavailableDeduplicator.ShouldLog(true, availabilitySignature);
             _missionActive = true;
             _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger);
+            if (string.Equals(mission.CategoryId, VisualStoryDefinition.CategoryId, StringComparison.Ordinal))
+            {
+                ShowVisualStory(mission, trigger);
+                return;
+            }
             _lockWindow = new LockWindow(mission, _config, _logger);
             var startedPayload = MissionTelemetry.StartedPayload(mission, _lockWindow.QuestionText);
             startedPayload["elapsedSeconds"] = _counter.ElapsedSeconds;
@@ -1134,6 +1150,39 @@ namespace Guardian
             };
             _lockWindow.Show();
             _lockWindow.Activate();
+        }
+
+        private void ShowVisualStory(Mission mission, MissionTrigger trigger)
+        {
+            _visualStoryWindow = new VisualStoryWindow(mission, _config, _logger);
+            var startedPayload = MissionTelemetry.StartedPayload(mission, _visualStoryWindow.QuestionText);
+            startedPayload["elapsedSeconds"] = _counter.ElapsedSeconds;
+            startedPayload["trigger"] = trigger.ToString().ToLowerInvariant();
+            _logger.Log("MissionStarted", startedPayload);
+            var visualStartedPayload = VisualStoryDefinition.Telemetry(mission);
+            visualStartedPayload["trigger"] = trigger.ToString().ToLowerInvariant();
+            _logger.Log("VisualStoryStarted", visualStartedPayload);
+            _logger.Log("DeviceLocked", new Dictionary<string, object> { { "missionId", mission.Id } });
+
+            _visualStoryWindow.StoryCompleted += delegate
+            {
+                _logger.Log("VisualStoryCompleted", VisualStoryDefinition.Telemetry(mission));
+            };
+            _visualStoryWindow.UnlockRequested += delegate
+            {
+                _counter.Reset();
+                _missionActive = false;
+                _logger.Log("DeviceUnlocked", new Dictionary<string, object> { { "missionId", mission.Id } });
+                if (_mediaSession != null) { _mediaSession.Dispose(); _mediaSession = null; }
+                _visualStoryWindow = null;
+            };
+            _visualStoryWindow.AdminShutdownRequested += delegate
+            {
+                _logger.Log("AdminShutdownRequested", new Dictionary<string, object> { { "missionId", mission.Id }, { "behavior", "stop_monitoring" } });
+                StopMonitoring("admin_exit_from_visual_story");
+            };
+            _visualStoryWindow.Show();
+            _visualStoryWindow.Activate();
         }
 
         private string MissionAvailabilitySignature()
@@ -1436,6 +1485,8 @@ namespace Guardian
                 _tray.Dispose();
                 _tray = null;
             }
+            if (_lockWindow != null) { _lockWindow.AllowProgrammaticClose(); _lockWindow.Close(); _lockWindow = null; }
+            if (_visualStoryWindow != null) { _visualStoryWindow.AllowProgrammaticClose(); _visualStoryWindow.Close(); _visualStoryWindow = null; }
             _timer.Stop();
             _remoteConfigTimer.Stop();
             SystemEvents.SessionSwitch -= OnSessionSwitch;
@@ -3365,6 +3416,7 @@ namespace Guardian
             CheckMissionHelpProgression(failures);
             CheckMissionRotationAndComprehension(failures);
             CheckNewMissionSkills(failures);
+            CheckVisualStory(failures);
             CheckMissionUnavailableDeduplication(failures);
             CheckAdminAuth(failures);
             CheckMediaPolicy(failures);
@@ -3701,6 +3753,19 @@ namespace Guardian
             deduplicator.ShouldLog(true, "has-skills");
             if (!deduplicator.ShouldLog(false, "no-skills")) failures.Add("unavailable state after recovery should log again");
             if (!deduplicator.ShouldLog(false, "different-config")) failures.Add("changed unavailable configuration should log again");
+        }
+
+        private static void CheckVisualStory(List<string> failures)
+        {
+            var config = GuardianConfig.Default();
+            config.MissionConfig.EnabledSkills = new List<string> { VisualStoryDefinition.SkillKey };
+            var catalog = new MissionCatalog();
+            var effective = catalog.EffectiveSkills(config.MissionConfig);
+            if (effective.Count != 1 || effective[0] != VisualStoryDefinition.SkillKey) failures.Add("visual story must be independently selectable");
+            var mission = catalog.Generate(VisualStoryDefinition.SkillKey, new PrivateMissionProfile(), new Dictionary<string, string>(), new Random(1));
+            if (mission == null || mission.CategoryId != VisualStoryDefinition.CategoryId || mission.AcceptedAnswers.Count != 0) failures.Add("visual story mission shape failed");
+            var payload = VisualStoryDefinition.Telemetry(mission);
+            if (!payload.ContainsKey("mission_id") || (double)payload["duration_seconds"] < 10 || (double)payload["duration_seconds"] > 15) failures.Add("visual story telemetry or duration failed");
         }
 
         private static void CheckConfig(List<string> failures)
