@@ -101,7 +101,7 @@ La corrección fue integrada en `main` y la release `0.4.4` quedó registrada en
 
 ## Versionado y promoción
 
-La base estable actual del repositorio es `0.4.8`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+La base estable actual del repositorio es `0.4.9`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
 
 No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. La RC `0.4.3-rc.3` se probó integralmente en STG —incluido updater—; `0.4.3` y la corrección `0.4.4` están registradas en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
 
@@ -140,7 +140,7 @@ La importación sanitizada también fue validada manualmente contra PROD: la pri
 
 Nunca se utiliza una feature branch sobre PROD para una vista previa visual o funcional.
 
-## Nuevas habilidades de Matemática y Comprensión — aprobadas en STG
+## Nuevas habilidades de Matemática y Comprensión — `0.4.9` en PC TEST PROD
 
 La rama `feature/new-math-comprehension-skills` implementa el catálogo aprobado en `docs/PROPUESTA_ITERACION_HABILIDADES_MATEMATICA_Y_COMPRENSION.md`:
 
@@ -149,11 +149,13 @@ La rama `feature/new-math-comprehension-skills` implementa el catálogo aprobado
 - Comprensión funcional: Ubicación personal, respaldada por ciudad, provincia y país del perfil privado y una ayuda 2 adaptada a la respuesta previa.
 - Comprensión → Información explícita: doce variantes de una oración.
 
-La migración `0007_personal_location` fue validada desde una base vacía y aplicada en PostgreSQL STG. El contenedor `guardian-stg-app` quedó saludable y el Admin STG mostró el catálogo, los tres campos nuevos y la jerarquía visual Categoría → Nivel → Habilidades. La validación manual de las misiones fue aprobada. Pasan los tests de servidor, build y self-tests. La RC `0.4.9-rc.1` completó correctamente el updater en Guardian TEST desde `0.4.9-staging-new-skills.1`, reinició desde el home aislado y volvió a reportar heartbeat. Queda habilitada la promoción controlada de `0.4.9` a PROD, comenzando exclusivamente por PC TEST. El dispositivo productivo final permanece fuera del rollout.
+La migración `0007_personal_location` fue validada desde una base vacía, aplicada primero en PostgreSQL STG y luego en PROD con los datos existentes preservados. El Admin muestra el catálogo, los tres campos nuevos y la jerarquía visual Categoría → Nivel → Habilidades. Pasan los tests de servidor, build y self-tests. La RC `0.4.9-rc.1` completó correctamente el updater en Guardian TEST desde `0.4.9-staging-new-skills.1`. Server/Admin y la release final `0.4.9` fueron publicados en PROD; la PC TEST completó `0.4.8 → 0.4.9`, reinició desde `%LOCALAPPDATA%\Guardian` y volvió a reportar heartbeat. El dispositivo productivo final permanece fuera del rollout.
 
-## Stage 3 — Admin y métricas (servidor/Admin en PROD; cliente 0.4.8 publicado)
+En ese update, `UpdateCommandReceived` registró correctamente `from_version=0.4.8`, pero los eventos posteriores emitidos por el updater legado y el campo final de la orden conservaron `previous_version=0.3.0`. El target, el SHA-256, el estado `success`, el relanzamiento y el heartbeat de `0.4.9` fueron correctos. La inconsistencia queda como deuda acotada de metadatos para revisar antes de interpretar automáticamente el origen de futuros updates.
 
-Stage 3A/3B de servidor/Admin está desplegado en PROD desde main. Las migraciones 0005_device_timezone y 0006_device_kind llegaron a head con datos existentes preservados. Los clientes anteriores continúan funcionando y reportando heartbeats/RemoteConfig. El cliente Guardian 0.4.8 está publicado en PROD; su validación controlada por dispositivo continúa el rollout obligatorio PC TEST → dispositivo productivo final.
+## Stage 3 — Admin y métricas (servidor/Admin en PROD; cliente 0.4.9 validado en PC TEST)
+
+Stage 3A/3B de servidor/Admin está desplegado en PROD desde main. Las migraciones 0005_device_timezone, 0006_device_kind y 0007_personal_location llegaron a head con datos existentes preservados. Los clientes anteriores continúan funcionando y reportando heartbeats/RemoteConfig. Guardian `0.4.9` está publicado en PROD y validado en PC TEST; cualquier rollout posterior continúa siendo manual y debe excluir el dispositivo productivo final hasta recibir una nueva aprobación.
 
 - Admin con cards compactas: `display_name` principal, hostname secundario, estado operativo y acciones remotas agrupadas.
 - Configuración unificada de nombre visible, intervalo, skills y perfil privado; la zona horaria es técnica, automática y no editable en Admin.

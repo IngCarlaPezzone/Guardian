@@ -1,6 +1,6 @@
 # Propuesta de iteración — nuevas habilidades de Matemática y Comprensión
 
-**Estado:** implementación y validación manual aprobadas en STG; la RC `0.4.9-rc.1` completó correctamente el updater en Guardian TEST y queda habilitada la promoción controlada a PROD, comenzando por PC TEST.
+**Estado:** implementación aprobada en STG y publicada como `0.4.9` en PROD; la actualización se validó únicamente en PC TEST. El dispositivo productivo final permanece fuera del rollout.
 
 ## 1. Objetivo y criterios
 

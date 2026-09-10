@@ -8,6 +8,7 @@
 - Incorpora Comprensión → Información explícita con doce variantes de una oración y ayudas progresivas.
 - La migración `0007_personal_location` agrega los campos del perfil; Admin, RemoteConfig, métricas y tests se amplían sin activar automáticamente las nuevas habilidades.
 - Reorganiza la configuración de misiones como Categoría → Nivel → Habilidades, evita títulos de categoría repetidos y mantiene los tooltips dentro de la pantalla.
+- La RC `0.4.9-rc.1` validó el updater en STG. Server/Admin y la release `0.4.9` fueron publicados en PROD y el rollout se completó únicamente en PC TEST; el dispositivo productivo final permanece sin actualizar.
 
 ## 0.4.8 — Respuestas numéricas argentinas y tendencias de métricas
 
