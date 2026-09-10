@@ -12,8 +12,26 @@ from server.app.models import Device, DeviceEvent
 
 
 CATALOG = {
-    "math": {"label": "Matemática", "levels": {"basic_operations_1": {"label": "Operaciones básicas", "skills": {"addition": "Sumas", "subtraction": "Restas", "multiplication": "Multiplicaciones"}}}},
-    "comprehension": {"label": "Comprensión", "levels": {"functional_1": {"label": "Comprensión funcional", "skills": {"identity": "Identidad", "age_birth": "Edad y nacimiento", "instruction_vocabulary": "Vocabulario de consignas", "current_date": "Fecha actual", "temporal_relations": "Relaciones temporales", "calendar": "Calendario", "seasons": "Estaciones"}}}},
+    "math": {"label": "Matemática", "levels": {
+        "basic_operations_1": {"label": "Operaciones básicas", "skills": {
+            "addition": "Sumas", "subtraction": "Restas", "multiplication": "Multiplicaciones",
+            "exact_division_one_digit": "Divisiones exactas · divisor de una cifra",
+            "exact_division_two_digits": "Divisiones exactas · divisor de dos cifras",
+            "exact_division_tens": "Divisiones exactas · decenas",
+            "multiply_by_powers_of_ten": "Multiplicaciones por 10, 100 y 1000",
+        }},
+        "word_problems_1": {"label": "Situaciones problemáticas", "skills": {
+            "everyday_addition": "Problemas cotidianos de suma", "everyday_subtraction": "Problemas cotidianos de resta",
+        }},
+    }},
+    "comprehension": {"label": "Comprensión", "levels": {
+        "functional_1": {"label": "Comprensión funcional", "skills": {
+            "identity": "Identidad", "age_birth": "Edad y nacimiento", "instruction_vocabulary": "Vocabulario de consignas",
+            "current_date": "Fecha actual", "temporal_relations": "Relaciones temporales", "calendar": "Calendario",
+            "seasons": "Estaciones", "personal_location": "Ubicación personal",
+        }},
+        "explicit_information_1": {"label": "Información explícita", "skills": {"one_sentence_literal": "Información explícita en una oración"}},
+    }},
 }
 
 QUESTION_LABELS = {
@@ -30,6 +48,12 @@ QUESTION_LABELS = {
     "tomorrow_weekday": "¿Qué día será mañana?", "yesterday_weekday": "¿Qué día fue ayer?", "next_month_ask_1": "¿Cuál es el mes que viene?", "previous_month": "¿Cuál fue el mes pasado?",
     "days_in_week": "¿Cuántos días tiene una semana?", "months_in_year": "¿Cuántos meses tiene un año?", "weekday_after": "¿Qué día viene después de un día dado?", "weekday_before": "¿Qué día viene antes de un día dado?", "month_after": "¿Qué mes viene después de un mes dado?", "month_before": "¿Qué mes viene antes de un mes dado?",
     "season_cold": "¿En qué estación hace mucho frío?", "season_hot": "¿En qué estación hace mucho calor?", "season_falling_leaves": "¿En qué estación se caen muchas hojas?", "season_flowers": "¿En qué estación crecen muchas flores?", "season_after": "¿Qué estación viene después de otra?",
+    "division_one_digit": "División exacta con divisor de una cifra", "division_two_digits": "División exacta con divisor de dos cifras", "division_tens": "División exacta con decenas",
+    "multiply_by_10": "Multiplicación por 10", "multiply_by_100": "Multiplicación por 100", "multiply_by_1000": "Multiplicación por 1000",
+    "add_strawberries": "Frutillas que se agregan", "add_stickers": "Figuritas que se agregan", "add_pencils": "Lápices que se agregan", "add_balloons": "Globos que se agregan", "add_cookies": "Galletitas que se agregan", "add_blocks": "Bloques que se reciben",
+    "subtract_strawberries": "Frutillas que se comen", "subtract_stickers": "Figuritas que se regalan", "subtract_pencils": "Lápices que se pierden", "subtract_balloons": "Globos que se pinchan", "subtract_cookies": "Galletitas que se comen", "subtract_blocks": "Bloques que faltan guardar",
+    "location_city_ask_1": "¿En qué ciudad vivís?", "location_city_ask_2": "¿Cuál es la ciudad donde vivís?", "location_province_ask_1": "¿En qué provincia vivís?", "location_province_ask_2": "¿Cuál es la provincia donde vivís?", "location_country_ask_1": "¿En qué país vivís?", "location_country_ask_2": "¿Cuál es el país donde vivís?", "location_city_to_province": "¿En qué provincia se encuentra tu ciudad?", "location_province_to_country": "¿En qué país se encuentra tu provincia?", "location_city_to_country": "¿En qué país se encuentra tu ciudad?",
+    "explicit_color_balloon": "Color del globo", "explicit_when_doctor": "Día del turno", "explicit_when_party": "Día de la fiesta", "explicit_owner_ball": "Quién tiene la pelota", "explicit_owner_book": "Quién tiene el libro", "explicit_location_cup": "Dónde está la taza", "explicit_location_ball": "Dónde está la pelota", "explicit_quantity_cats": "Cantidad de gatos", "explicit_quantity_pencils": "Cantidad de lápices", "explicit_action_nina": "Qué dibuja Nina", "explicit_action_mateo": "Qué come Mateo", "explicit_object_dog": "Dónde duerme el perro",
 }
 
 MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionHelpRequested", "MissionWritingHintShown", "MissionSolved"}
@@ -262,10 +286,13 @@ def summarize(records: list[MissionRecord], category: str | None = None) -> dict
     counts["average_attempts"] = round(total_attempts / len(valid_attempts), 2) if valid_attempts else None
     counts["first_attempt_rate"] = round((counts["first_attempt"] / len(valid_attempts)) * 100, 1) if valid_attempts else None
     counts["retry_rate"] = round(((len(valid_attempts) - counts["first_attempt"]) / len(valid_attempts)) * 100, 1) if valid_attempts else None
+    support_records = [record for record in records if record.category_id == "comprehension" or record.level_id == "word_problems_1"]
+    if support_records or category == "comprehension":
+        counts["mission_help"] = percentage_metric(support_records, lambda record: record.max_help_level, lambda value: value >= 1)
+        counts["help_distribution"] = distribution(support_records, lambda record: record.max_help_level, {0: "Sin ayuda", 1: "Reformulación", 2: "Pista", 3: "Guía"})
     if category == "comprehension":
-        counts["comprehension_help"] = percentage_metric(records, lambda record: record.max_help_level, lambda value: value >= 1)
+        counts["comprehension_help"] = counts["mission_help"]
         counts["orthographic_support"] = percentage_metric(records, lambda record: record.orthographic_support, lambda value: value)
-        counts["help_distribution"] = distribution(records, lambda record: record.max_help_level, {0: "Sin ayuda", 1: "Reformulación", 2: "Pista", 3: "Guía"})
         counts["writing_distribution"] = distribution(records, lambda record: record.writing_max_level, {"none": "Sin apoyo ortográfico", "level_1": "Nivel 1", "level_2": "Nivel 2", "revealed": "Respuesta escrita revelada"})
     counts["median_seconds"] = round(median(durations), 1) if durations else None
     return counts
@@ -374,6 +401,75 @@ def trend_rows(records: list[MissionRecord], tz: ZoneInfo, start: date | None, e
     return rows
 
 
+def skill_progress(records: list[MissionRecord], tz: tzinfo, start: date | None, end: date | None, category: str | None, level: str | None) -> dict | None:
+    """Construye el seguimiento diario simple por skill para un nivel.
+
+    La regla de consolidación es deliberadamente conservadora: tres días locales
+    consecutivos, con al menos tres misiones válidas por día, todas resueltas al
+    primer intento. Es una señal para el adulto; no modifica la configuración.
+    """
+    if not category or not level or not start or not end:
+        return None
+    skills = CATALOG.get(category, {}).get("levels", {}).get(level, {}).get("skills", {})
+    if not skills:
+        return None
+    days: list[date] = []
+    current = start
+    while current <= end:
+        days.append(current)
+        current += timedelta(days=1)
+    grouped: dict[tuple[str, date], list[MissionRecord]] = defaultdict(list)
+    for record in records:
+        if record.skill_id in skills:
+            grouped[(record.skill_id, as_utc(record.solved_at).astimezone(tz).date())].append(record)
+
+    rows = []
+    for skill_id, label in skills.items():
+        cells = []
+        for day in days:
+            summary = summarize(grouped[(skill_id, day)])
+            valid = summary["attempt_valid_missions"]
+            first = summary["first_attempt"]
+            if not valid:
+                state = "no-data"
+            elif valid < 3:
+                state = "insufficient"
+            elif first == valid:
+                state = "green"
+            elif summary["first_attempt_rate"] >= 50:
+                state = "yellow"
+            elif summary["first_attempt_rate"] >= 25:
+                state = "orange"
+            else:
+                state = "red"
+            cells.append({
+                "date": day.isoformat(),
+                "label": day.strftime("%d/%m"),
+                "missions": summary["missions"],
+                "valid_missions": valid,
+                "first_attempt": first,
+                "first_attempt_rate": summary["first_attempt_rate"],
+                "state": state,
+            })
+        recent = cells[-3:]
+        consolidated = len(recent) == 3 and all(
+            cell["valid_missions"] >= 3 and cell["first_attempt"] == cell["valid_missions"]
+            for cell in recent
+        )
+        rows.append({
+            "skill_id": skill_id,
+            "label": label,
+            "cells": cells,
+            "status": "Consolidada provisionalmente" if consolidated else "En seguimiento",
+            "status_class": "consolidated" if consolidated else "monitoring",
+        })
+    return {
+        "days": [{"date": day.isoformat(), "label": day.strftime("%d/%m")} for day in days],
+        "rows": rows,
+        "rule": "Se considera consolidada provisionalmente si durante los últimos 3 días del período hubo al menos 3 misiones por día y todas se resolvieron al primer intento.",
+    }
+
+
 def help_label(level: int | None) -> str | None:
     return {1: "Reformulación", 2: "Pista", 3: "Guía"}.get(level)
 
@@ -423,15 +519,23 @@ def dashboard_data(db: Session, device: Device, period: str, start: str | None, 
     records = [record for record in records if matches_scope(record, category, level, skill)]
     dimension = "category" if not category else "level" if not level else "skill" if not skill else "variant"
     trend_dimension_value = trend_dimension(category, level) if not skill else None
+    progress = skill_progress(records, tz, resolved_start, resolved_end, category, level) if category and level and not skill else None
+    supports_help = category == "comprehension" or (category == "math" and level == "word_problems_1")
+    summary = summarize(records, category)
+    if supports_help and "mission_help" not in summary:
+        summary["mission_help"] = percentage_metric([], lambda record: record.max_help_level, lambda value: value >= 1)
+        summary["help_distribution"] = distribution([], lambda record: record.max_help_level, {0: "Sin ayuda", 1: "Reformulación", 2: "Pista", 3: "Guía"})
     return {
         "timezone": str(tz),
-        "summary": summarize(records, category),
+        "summary": summary,
         "rows": group_rows(records, dimension),
         "variants": group_rows(records, "variant") if skill else [],
         "executions_by_variant": {variant: [execution_detail(record, tz) for record in sorted([candidate for candidate in records if candidate.variant_id == variant], key=lambda candidate: (candidate.solved_at, candidate.mission_id), reverse=True)] for variant in {record.variant_id for record in records if record.variant_id}} if skill else {},
         "daily": daily_rows(records, tz),
         "trends": trend_rows(records, tz, resolved_start, resolved_end, trend_dimension_value),
         "trend_dimension": trend_dimension_value,
+        "skill_progress": progress,
         "scope_label": scope_label(category, level, skill),
         "record_count": len(records),
+        "supports_help": supports_help,
     }

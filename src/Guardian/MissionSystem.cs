@@ -27,6 +27,11 @@ namespace Guardian
         public string Nickname { get; set; }
         public string TodayWeekday { get; set; }
         public string CurrentMonth { get; set; }
+        public string FirstQuantity { get; set; }
+        public string SecondQuantity { get; set; }
+        public string City { get; set; }
+        public string Province { get; set; }
+        public string Country { get; set; }
     }
 
     public sealed class MissionHelpStep
@@ -42,7 +47,10 @@ namespace Guardian
         public string MiddleName { get; set; }
         public string LastName { get; set; }
         public string BirthDate { get; set; }
-        public bool IsConfigured { get { return !string.IsNullOrWhiteSpace(PreferredName) || !string.IsNullOrWhiteSpace(FirstName) || !string.IsNullOrWhiteSpace(LastName) || !string.IsNullOrWhiteSpace(BirthDate); } }
+        public string City { get; set; }
+        public string Province { get; set; }
+        public string Country { get; set; }
+        public bool IsConfigured { get { return !string.IsNullOrWhiteSpace(PreferredName) || !string.IsNullOrWhiteSpace(FirstName) || !string.IsNullOrWhiteSpace(LastName) || !string.IsNullOrWhiteSpace(BirthDate) || !string.IsNullOrWhiteSpace(City) || !string.IsNullOrWhiteSpace(Province) || !string.IsNullOrWhiteSpace(Country); } }
     }
 
     public sealed class MissionConfig
@@ -74,7 +82,10 @@ namespace Guardian
                 && SameText(left == null ? null : left.FirstName, right == null ? null : right.FirstName)
                 && SameText(left == null ? null : left.MiddleName, right == null ? null : right.MiddleName)
                 && SameText(left == null ? null : left.LastName, right == null ? null : right.LastName)
-                && SameText(left == null ? null : left.BirthDate, right == null ? null : right.BirthDate);
+                && SameText(left == null ? null : left.BirthDate, right == null ? null : right.BirthDate)
+                && SameText(left == null ? null : left.City, right == null ? null : right.City)
+                && SameText(left == null ? null : left.Province, right == null ? null : right.Province)
+                && SameText(left == null ? null : left.Country, right == null ? null : right.Country);
         }
 
         private static bool SameText(string left, string right) { return string.Equals(left ?? "", right ?? "", StringComparison.Ordinal); }
@@ -213,23 +224,39 @@ namespace Guardian
         private static readonly string[] Weekdays = { "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado" };
         private static readonly string[] Months = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
         private static readonly string[] Seasons = { "invierno", "primavera", "verano", "otoño" };
+        private static readonly HashSet<string> AlwaysAvailableSkills = new HashSet<string>(StringComparer.Ordinal) {
+            "math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication",
+            "math.basic_operations_1.exact_division_one_digit", "math.basic_operations_1.exact_division_two_digits",
+            "math.basic_operations_1.exact_division_tens", "math.basic_operations_1.multiply_by_powers_of_ten",
+            "math.word_problems_1.everyday_addition", "math.word_problems_1.everyday_subtraction",
+            "comprehension.functional_1.current_date", "comprehension.functional_1.temporal_relations",
+            "comprehension.functional_1.calendar", "comprehension.functional_1.seasons",
+            "comprehension.functional_1.instruction_vocabulary", "comprehension.explicit_information_1.one_sentence_literal"
+        };
+
         public List<string> EffectiveSkills(MissionConfig config)
         {
             var result = new List<string>(); if (config == null || config.EnabledSkills == null) return result;
             foreach (var key in config.EnabledSkills) if (CanGenerate(key, config.PrivateProfile)) result.Add(key); return result;
         }
+
         public bool CanGenerate(string key, PrivateMissionProfile p)
         {
             if (key == "comprehension.functional_1.identity") return p != null && (!string.IsNullOrWhiteSpace(p.PreferredName) || !string.IsNullOrWhiteSpace(p.FirstName) || !string.IsNullOrWhiteSpace(p.LastName));
             if (key == "comprehension.functional_1.age_birth") return p != null && ParseDate(p.BirthDate).HasValue;
-            return key == "math.basic_operations_1.addition" || key == "math.basic_operations_1.subtraction" || key == "math.basic_operations_1.multiplication" || key == "comprehension.functional_1.current_date" || key == "comprehension.functional_1.temporal_relations" || key == "comprehension.functional_1.calendar" || key == "comprehension.functional_1.seasons" || key == "comprehension.functional_1.instruction_vocabulary";
+            if (key == "comprehension.functional_1.personal_location") return p != null && !string.IsNullOrWhiteSpace(p.City) && !string.IsNullOrWhiteSpace(p.Province) && !string.IsNullOrWhiteSpace(p.Country);
+            return AlwaysAvailableSkills.Contains(key);
         }
+
         public Mission Generate(string key, PrivateMissionProfile p, Dictionary<string, string> last, Random r)
         {
             if (!CanGenerate(key, p)) return null;
-            if (key.StartsWith("math.")) return MathMission(key, r);
+            if (key.StartsWith("math.basic_operations_1.", StringComparison.Ordinal)) return BasicMathMission(key, r);
+            if (key.StartsWith("math.word_problems_1.", StringComparison.Ordinal)) return WordProblem(key, last, r);
             if (key.EndsWith(".identity")) return Identity(p, last, r);
             if (key.EndsWith(".age_birth")) return AgeBirth(p, last, r);
+            if (key.EndsWith(".personal_location")) return PersonalLocation(p, last, r);
+            if (key.EndsWith(".one_sentence_literal")) return ExplicitInformation(last, r);
             if (key.EndsWith(".current_date")) return CurrentDate(last, r);
             if (key.EndsWith(".temporal_relations")) return Temporal(last, r);
             if (key.EndsWith(".calendar")) return Calendar(last, r);
@@ -246,10 +273,10 @@ namespace Guardian
             if (cat == "comprehension")
             {
                 var template = MissionContent.PromptFor(variant);
-                contentPrompt = template.IndexOf("{0}", StringComparison.Ordinal) >= 0 ? prompt : template;
+                contentPrompt = template.IndexOf("{", StringComparison.Ordinal) >= 0 ? prompt : template;
             }
             var mission = new Mission { Id = Guid.NewGuid().ToString(), CategoryId = cat, LevelId = level, SkillId = skill, VariantId = variant, Prompt = contentPrompt, AcceptedAnswers = new List<string>(answers), HelpSteps = new List<MissionHelpStep>(), ContentContext = context };
-            if (cat == "comprehension") mission.HelpSteps = MissionContent.HelpSteps(mission);
+            if (cat == "comprehension" || level == "word_problems_1") mission.HelpSteps = MissionContent.HelpSteps(mission);
             return mission;
         }
         private static Mission DateM(string cat, string level, string skill, string variant, string prompt, params string[] answers)
@@ -258,13 +285,54 @@ namespace Guardian
             mission.AcceptsNaturalLanguageDate = true;
             return mission;
         }
-        private Mission MathMission(string key, Random r)
+        private Mission BasicMathMission(string key, Random r)
         {
             var skill = key.Substring(key.LastIndexOf('.') + 1); int a, b, answer; string symbol;
             if (skill == "addition") { a = r.Next(20, 100); b = r.Next(10, 90); answer = a + b; symbol = "+"; }
             else if (skill == "subtraction") { a = r.Next(40, 130); b = r.Next(10, Math.Min(90, a)); answer = a - b; symbol = "-"; }
-            else { a = r.Next(3, 13); b = r.Next(3, 13); answer = a * b; symbol = "x"; }
+            else if (skill == "multiplication") { a = r.Next(3, 13); b = r.Next(3, 13); answer = a * b; symbol = "x"; }
+            else if (skill == "exact_division_one_digit")
+            {
+                do { b = r.Next(2, 10); answer = r.Next(2, 13); a = b * answer; } while (a < 12 || a > 81);
+                return M("math", "basic_operations_1", skill, "division_one_digit", a + " : " + b + " = ?", answer.ToString());
+            }
+            else if (skill == "exact_division_two_digits")
+            {
+                do { b = r.Next(11, 26); } while (b % 10 == 0);
+                answer = r.Next(2, 13); a = b * answer;
+                return M("math", "basic_operations_1", skill, "division_two_digits", a + " : " + b + " = ?", answer.ToString());
+            }
+            else if (skill == "exact_division_tens")
+            {
+                b = new[] { 10, 20, 30, 40, 50 }[r.Next(5)]; answer = r.Next(2, 13); a = b * answer;
+                return M("math", "basic_operations_1", skill, "division_tens", a + " : " + b + " = ?", answer.ToString());
+            }
+            else
+            {
+                a = r.Next(1, 21); b = new[] { 10, 100, 1000 }[r.Next(3)]; answer = a * b;
+                var variant = b == 10 ? "multiply_by_10" : b == 100 ? "multiply_by_100" : "multiply_by_1000";
+                return M("math", "basic_operations_1", skill, variant, a + " x " + b + " = ?", answer.ToString());
+            }
             return M("math", "basic_operations_1", skill, "generated", a + " " + symbol + " " + b + " = ?", answer.ToString());
+        }
+
+        private Mission WordProblem(string key, Dictionary<string, string> last, Random r)
+        {
+            var addition = key.EndsWith(".everyday_addition", StringComparison.Ordinal);
+            var skill = addition ? "everyday_addition" : "everyday_subtraction";
+            var a = addition ? r.Next(1, 11) : r.Next(2, 21);
+            var b = addition ? r.Next(1, Math.Min(11, 21 - a)) : r.Next(1, a);
+            var answer = addition ? a + b : a - b;
+            var ids = addition
+                ? new[] { "add_strawberries", "add_stickers", "add_pencils", "add_balloons", "add_cookies", "add_blocks" }
+                : new[] { "subtract_strawberries", "subtract_stickers", "subtract_pencils", "subtract_balloons", "subtract_cookies", "subtract_blocks" };
+            var missions = new List<Mission>();
+            foreach (var id in ids)
+            {
+                var context = new MissionContentContext { FirstQuantity = a.ToString(), SecondQuantity = b.ToString() };
+                missions.Add(M("math", "word_problems_1", skill, id, MissionContent.PromptFor(id, a, b), context, answer.ToString()));
+            }
+            return Choose(missions, last, key, r);
         }
         private Mission Identity(PrivateMissionProfile p, Dictionary<string, string> last, Random r)
         {
@@ -275,6 +343,38 @@ namespace Guardian
         {
             var birth = ParseDate(p.BirthDate).Value; var today = GuardianClock.TodayLocal; var age = today.Year - birth.Year; if (birth > today.AddYears(-age)) age--;
             return Choose(new List<Mission> { M("comprehension","functional_1","age_birth","age_ask_1","¿Cuántos años tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_ask_2","¿Qué edad tenés?", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","age_field","Edad:", NumberAnswers(age).ToArray()), M("comprehension","functional_1","age_birth","birth_year_ask","¿En qué año naciste?",birth.Year.ToString()), M("comprehension","functional_1","age_birth","birth_year_field","Año de nacimiento:",birth.Year.ToString()), DateM("comprehension","functional_1","age_birth","birthday_ask","¿Cuándo es tu cumpleaños?", DateAnswers(birth, false).ToArray()), DateM("comprehension","functional_1","age_birth","birth_date_ask","¿Cuál es tu fecha de nacimiento?", DateAnswers(birth, true).ToArray()) }, last, "comprehension.functional_1.age_birth", r);
+        }
+        private Mission PersonalLocation(PrivateMissionProfile p, Dictionary<string, string> last, Random r)
+        {
+            var context = new MissionContentContext { City = p.City, Province = p.Province, Country = p.Country };
+            return Choose(new List<Mission> {
+                M("comprehension","functional_1","personal_location","location_city_ask_1","¿En qué ciudad vivís?",context,p.City),
+                M("comprehension","functional_1","personal_location","location_city_ask_2","¿Cuál es la ciudad donde vivís?",context,p.City),
+                M("comprehension","functional_1","personal_location","location_province_ask_1","¿En qué provincia vivís?",context,p.Province),
+                M("comprehension","functional_1","personal_location","location_province_ask_2","¿Cuál es la provincia donde vivís?",context,p.Province),
+                M("comprehension","functional_1","personal_location","location_country_ask_1","¿En qué país vivís?",context,p.Country),
+                M("comprehension","functional_1","personal_location","location_country_ask_2","¿Cuál es el país donde vivís?",context,p.Country),
+                M("comprehension","functional_1","personal_location","location_city_to_province",MissionContent.PromptFor("location_city_to_province",p.City),context,p.Province),
+                M("comprehension","functional_1","personal_location","location_province_to_country",MissionContent.PromptFor("location_province_to_country",p.Province),context,p.Country),
+                M("comprehension","functional_1","personal_location","location_city_to_country",MissionContent.PromptFor("location_city_to_country",p.City),context,p.Country)
+            }, last, "comprehension.functional_1.personal_location", r);
+        }
+        private Mission ExplicitInformation(Dictionary<string, string> last, Random r)
+        {
+            return Choose(new List<Mission> {
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_color_balloon","Emma tiene un globo rojo. ¿De qué color es el globo?","rojo"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_when_doctor","Matías tiene turno con la doctora el miércoles. ¿Cuándo tiene turno Matías con la doctora?","miércoles","el miércoles"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_when_party","La fiesta de Ana es el sábado. ¿Cuándo es la fiesta de Ana?","sábado","el sábado"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_owner_ball","Tomás tiene una pelota. ¿Quién tiene la pelota?","Tomás"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_owner_book","Lucía tiene un libro. ¿Quién tiene el libro?","Lucía"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_location_cup","La taza está en la mesa. ¿Dónde está la taza?","mesa","en la mesa"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_location_ball","La pelota está debajo de la silla. ¿Dónde está la pelota?","debajo de la silla"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_quantity_cats","Hay 3 gatos en el patio. ¿Cuántos gatos hay?","3"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_quantity_pencils","Hay 4 lápices en la caja. ¿Cuántos lápices hay?","4"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_action_nina","Nina dibuja una flor. ¿Qué dibuja Nina?","flor","una flor"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_action_mateo","Mateo come una manzana. ¿Qué come Mateo?","manzana","una manzana"),
+                M("comprehension","explicit_information_1","one_sentence_literal","explicit_object_dog","El perro duerme en su cama. ¿Dónde duerme el perro?","cama","en su cama")
+            }, last, "comprehension.explicit_information_1.one_sentence_literal", r);
         }
         private Mission CurrentDate(Dictionary<string, string> last, Random r) { var d = GuardianClock.TodayLocal; return Choose(new List<Mission> { M("comprehension","functional_1","current_date","current_year_ask_1","¿En qué año estamos?",d.Year.ToString()), M("comprehension","functional_1","current_date","current_year_ask_2","¿Qué año es?",d.Year.ToString()), M("comprehension","functional_1","current_date","current_month_ask_1","¿En qué mes estamos?",Months[d.Month-1]), M("comprehension","functional_1","current_date","current_month_ask_2","¿Qué mes es?",Months[d.Month-1]), M("comprehension","functional_1","current_date","current_weekday","¿Qué día de la semana es hoy?",Weekdays[(int)d.DayOfWeek]), M("comprehension","functional_1","current_date","current_day_of_month","¿Qué día del mes es hoy?",d.Day.ToString()), DateM("comprehension","functional_1","current_date","current_full_date","¿Qué fecha es hoy?",DateAnswers(d,true).ToArray()) },last,"comprehension.functional_1.current_date",r); }
         private Mission Temporal(Dictionary<string, string> last, Random r) { var d = GuardianClock.TodayLocal; var context = new MissionContentContext { TodayWeekday = Weekdays[(int)d.DayOfWeek], CurrentMonth = Months[d.Month-1] }; return Choose(new List<Mission> { M("comprehension","functional_1","temporal_relations","tomorrow_weekday","¿Qué día de la semana es mañana?",context,Weekdays[(int)d.AddDays(1).DayOfWeek]), M("comprehension","functional_1","temporal_relations","yesterday_weekday","¿Qué día de la semana fue ayer?",context,Weekdays[(int)d.AddDays(-1).DayOfWeek]), M("comprehension","functional_1","temporal_relations","next_month_ask_1","¿Cuál es el mes que viene?",context,Months[d.AddMonths(1).Month-1]), M("comprehension","functional_1","temporal_relations","previous_month","¿Cuál fue el mes pasado?",context,Months[d.AddMonths(-1).Month-1]) },last,"comprehension.functional_1.temporal_relations",r); }

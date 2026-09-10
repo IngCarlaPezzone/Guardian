@@ -150,6 +150,9 @@ def get_config(device: Device = Depends(current_device)):
                 "MiddleName": profile.middle_name if profile else "",
                 "LastName": profile.last_name if profile else "",
                 "BirthDate": profile.birth_date if profile else "",
+                "City": profile.city if profile else "",
+                "Province": profile.province if profile else "",
+                "Country": profile.country if profile else "",
             },
         },
     }

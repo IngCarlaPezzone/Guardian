@@ -80,7 +80,7 @@ El servidor deduplica por `event_id`. El cliente elimina de pendientes solo los 
 
 Desde `0.3.1`, el acceso local a `events-pending.jsonl` usa locking interproceso y los errores de telemetria no deben cerrar Guardian.
 
-Desde `0.4.0`, los eventos de misión nuevos incluyen `mission_id`, `category_id`, `level_id`, `skill_id`, `variant_id` y `attempt`. Los valores del perfil privado no se registran ni se envían al servidor.
+Desde `0.4.0`, los eventos de misión nuevos incluyen `mission_id`, `category_id`, `level_id`, `skill_id`, `variant_id` y `attempt`. Los campos estructurados del perfil privado no se agregan como campos independientes de telemetría.
 
 Desde `0.4.3-staging-comprehension-help`, los eventos de misión incluyen además `skill_level_id` (nivel pedagógico), `max_help_level`, `help_requests_count`, `had_orthographic_error`, `writing_correction_count` y `writing_answer_revealed`.
 
@@ -92,6 +92,8 @@ Desde `0.4.3-staging-comprehension-help`, los eventos de misión incluyen ademá
 `MissionFailed` y `MissionSolved` incluyen `answer`, con el texto original enviado por la persona usuaria, y `helpLevel`, con el nivel de ayuda vigente al intentar responder. `MissionFailed` añade también `failureReason` (`invalid_input`, `orthographic_error` o `wrong_answer`). Estos campos viajan exclusivamente en el payload del mecanismo de telemetría existente; no se agregan a logs de consola ni a otros registros.
 
 `MissionStarted` incluye `question_text`: el texto final exacto que se muestra en pantalla, con sus valores dinámicos ya resueltos. No se reconstruye posteriormente ni se imprime en consola, excepciones o registros auxiliares. Los eventos históricos que no tienen este campo deben tratarse como dato desconocido.
+
+En las misiones basadas en perfil privado, `question_text` y `answer` pueden contener el dato personal necesario para revisar cómo se respondió. Se conservan exclusivamente en el pipeline privado existente y en el detalle autenticado de Admin. La importación sanitizada PROD → STG elimina `question_text`, `answer` y cualquier campo de ubicación.
 
 Salvo `answer` en `MissionFailed` y `MissionSolved` y `question_text` en `MissionStarted`, estos payloads nunca incluyen el input, la respuesta aceptada, el texto de la consigna o de ayuda, prefijos ni datos del perfil privado.
 

@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["DEVICE_BOOTSTRAP_TOKEN"] = "test-bootstrap"
@@ -12,7 +12,7 @@ from server.app.admin import ADMIN_CSS_VERSION, admin_title_with_section, sign_u
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
-from server.app.metrics import QUESTION_LABELS, dashboard_data
+from server.app.metrics import QUESTION_LABELS, MissionRecord, dashboard_data, skill_progress
 from server.app.models import DEVICE_KIND_STG_DEMO, DEVICE_KIND_STG_IMPORTED_TELEMETRY, Base, Device, DeviceCommand, DeviceConfiguration, DeviceEvent, DeviceMissionProfile, Release, UpdateCommand
 from server.app.security import hash_secret, utcnow
 
@@ -660,12 +660,21 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     assert "Comprensión funcional" in page.text
     assert "data-tooltip" in page.text
     assert "Vocabulario de consignas" in page.text
+    assert "Divisiones exactas · divisor de una cifra" in page.text
+    assert "Situaciones problemáticas" in page.text
+    assert "Ubicación personal" in page.text
+    assert "Información explícita en una oración" in page.text
     assert "aria-label" in page.text
+    assert page.text.count("<h3>Matemática</h3>") == 1
+    assert page.text.count("<h3>Comprensión</h3>") == 1
+    assert page.text.count('class="hierarchy-label">Nivel</span>') == 4
+    assert page.text.count('class="hierarchy-label">Habilidades</span>') == 4
 
     response = client.post(f"/admin/devices/{device_id}/config", data={
         "display_name": "Mission Test", "interval_minutes": "15", "missions_submitted": "1",
-        "enabled_skills": ["math.basic_operations_1.subtraction", "comprehension.functional_1.identity", "comprehension.functional_1.instruction_vocabulary"],
+        "enabled_skills": ["math.basic_operations_1.exact_division_one_digit", "math.word_problems_1.everyday_addition", "comprehension.functional_1.personal_location", "comprehension.explicit_information_1.one_sentence_literal"],
         "preferred_name": "Tomi", "first_name": "Tomás", "middle_name": "", "last_name": "Pérez", "birth_date": "2010-08-23",
+        "city": "Ciudad Ejemplo", "province": "Provincia Ejemplo", "country": "País Ejemplo",
     }, follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"] == f"/admin/devices/{device_id}/missions?saved=1"
@@ -682,13 +691,19 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     headers = {"Authorization": f"Bearer {token}"}
     remote = client.get(f"/api/v1/devices/{device_id}/config", headers=headers)
     assert remote.status_code == 200
-    assert remote.json()["mission_config"]["EnabledSkills"] == ["math.basic_operations_1.subtraction", "comprehension.functional_1.identity", "comprehension.functional_1.instruction_vocabulary"]
+    assert remote.json()["mission_config"]["EnabledSkills"] == ["math.basic_operations_1.exact_division_one_digit", "math.word_problems_1.everyday_addition", "comprehension.functional_1.personal_location", "comprehension.explicit_information_1.one_sentence_literal"]
     assert remote.json()["mission_config"]["PrivateProfile"]["FirstName"] == "Tomás"
+    assert remote.json()["mission_config"]["PrivateProfile"]["City"] == "Ciudad Ejemplo"
+    assert remote.json()["mission_config"]["PrivateProfile"]["Province"] == "Provincia Ejemplo"
+    assert remote.json()["mission_config"]["PrivateProfile"]["Country"] == "País Ejemplo"
 
     with SessionLocal() as db:
         profile = db.get(DeviceMissionProfile, device_id)
         assert profile is not None
         assert profile.birth_date == "2010-08-23"
+        assert profile.city == "Ciudad Ejemplo"
+        assert profile.province == "Provincia Ejemplo"
+        assert profile.country == "País Ejemplo"
 
 
 def test_configuration_update_controls_are_stable_and_reuse_update_command_flow():
@@ -836,6 +851,7 @@ def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
     response = client.get(f"/admin/devices/{device_id}/metrics?period=all")
     assert response.status_code == 200
     assert "Misiones resueltas" in response.text
+    assert "Seguimiento diario de habilidades" not in response.text
     assert "Categoría" in response.text
     assert "Misiones por categoría" not in response.text
     assert "Ayuda de comprensión" not in response.text
@@ -847,6 +863,11 @@ def test_metrics_count_unique_missions_attempts_scopes_legacy_and_variants():
     assert "Ayuda de comprensión" in skill.text
     assert "Máximo apoyo de comprensión" not in skill.text
     assert "Máximo apoyo ortográfico" not in skill.text
+    assert "Seguimiento diario de habilidades" not in skill.text
+    level = client.get(f"/admin/devices/{device_id}/metrics?start=2026-08-20&end=2026-08-22&category=comprehension&level=functional_1")
+    assert level.status_code == 200
+    assert "Seguimiento diario de habilidades" in level.text
+    assert "En seguimiento" in level.text
     comprehension = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension")
     assert "Máximo apoyo de comprensión" in comprehension.text
     assert "Máximo apoyo ortográfico" in comprehension.text
@@ -911,8 +932,67 @@ def test_metrics_trends_group_daily_missions_and_attempts_with_empty_days():
     assert ranged.status_code == 200
     assert "Misiones e intentos por día" in ranged.text
     assert "metrics-trends.js" in ranged.text
+    assert "metrics-trends.css" in ranged.text
     assert 'data-metrics-trend' in ranged.text
     assert "Misiones e intentos por día" not in today.text
+
+    level = client.get(f"/admin/devices/{device_id}/metrics?start=2026-08-20&end=2026-08-23&category=comprehension&level=functional_1")
+    assert level.text.index("Misiones e intentos por habilidad") < level.text.index("Seguimiento diario de habilidades")
+
+
+def test_word_problem_metrics_show_mission_help_without_orthographic_metrics():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000a1f0"
+    common = {"category_id": "math", "level_id": "word_problems_1", "skill_id": "everyday_addition", "variant_id": "add_strawberries", "mission_id": "word-problem-1"}
+    base = datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc)
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Word-Problems-Test-PC", token_hash=hash_secret("word-problems-token"), client_version="0.4.9-staging-new-skills", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="UTC", version=1))
+        db.add_all([
+            DeviceEvent(event_id="71000000-0000-4000-8000-000000000001", device_id=device_id, occurred_at=base, received_at=utcnow(), event_type="MissionStarted", payload={**common, "attempt": 1, "question_text": "Hay 2 frutillas. Agregan 3. ¿Cuántas hay en total?", "max_help_level": 0}),
+            DeviceEvent(event_id="71000000-0000-4000-8000-000000000002", device_id=device_id, occurred_at=base + timedelta(seconds=2), received_at=utcnow(), event_type="MissionFailed", payload={**common, "attempt": 1, "answer": "1", "failureReason": "wrong_answer", "max_help_level": 0}),
+            DeviceEvent(event_id="71000000-0000-4000-8000-000000000003", device_id=device_id, occurred_at=base + timedelta(seconds=3), received_at=utcnow(), event_type="MissionHelpRequested", payload={**common, "attempt": 2, "help_level": 1, "max_help_level": 1}),
+            DeviceEvent(event_id="71000000-0000-4000-8000-000000000004", device_id=device_id, occurred_at=base + timedelta(seconds=5), received_at=utcnow(), event_type="MissionSolved", payload={**common, "attempt": 2, "answer": "5", "max_help_level": 1}),
+        ])
+        db.commit()
+
+    with SessionLocal() as db:
+        data = dashboard_data(db, db.get(Device, device_id), "all", None, None, "math", "word_problems_1", None)
+    assert data["supports_help"] is True
+    assert data["summary"]["mission_help"] == {"numerator": 1, "valid_missions": 1, "percentage": 100.0}
+
+    page = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=math&level=word_problems_1")
+    assert page.status_code == 200
+    assert "Con ayuda de la misión" in page.text
+    assert "Máximo apoyo de la misión" in page.text
+    assert "Apoyo ortográfico" not in page.text
+
+
+def test_skill_progress_requires_three_consecutive_days_with_three_first_attempts():
+    records = []
+    for day in (1, 2, 3):
+        for index in range(3):
+            records.append(MissionRecord(
+                mission_id=f"addition-{day}-{index}", category_id="math", level_id="basic_operations_1", skill_id="addition", variant_id="generated",
+                solved_at=datetime(2026, 9, day, 10, index, tzinfo=timezone.utc), solved_attempt=1,
+            ))
+        for index in range(3):
+            records.append(MissionRecord(
+                mission_id=f"subtraction-{day}-{index}", category_id="math", level_id="basic_operations_1", skill_id="subtraction", variant_id="generated",
+                solved_at=datetime(2026, 9, day, 11, index, tzinfo=timezone.utc), solved_attempt=2,
+            ))
+
+    progress = skill_progress(records, timezone.utc, date(2026, 9, 1), date(2026, 9, 3), "math", "basic_operations_1")
+
+    assert [item["label"] for item in progress["days"]] == ["01/09", "02/09", "03/09"]
+    addition = next(row for row in progress["rows"] if row["skill_id"] == "addition")
+    subtraction = next(row for row in progress["rows"] if row["skill_id"] == "subtraction")
+    multiplication = next(row for row in progress["rows"] if row["skill_id"] == "multiplication")
+    assert addition["status"] == "Consolidada provisionalmente"
+    assert [cell["state"] for cell in addition["cells"]] == ["green", "green", "green"]
+    assert subtraction["status"] == "En seguimiento"
+    assert [cell["state"] for cell in subtraction["cells"]] == ["red", "red", "red"]
+    assert [cell["state"] for cell in multiplication["cells"]] == ["no-data", "no-data", "no-data"]
 
 
 def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():

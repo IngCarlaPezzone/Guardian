@@ -35,6 +35,8 @@ ADMIN_CSS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "admin.cs
 templates.env.globals["admin_css_version"] = ADMIN_CSS_VERSION
 ADMIN_TRENDS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "metrics-trends.js").read_bytes()).hexdigest()[:12]
 templates.env.globals["admin_trends_version"] = ADMIN_TRENDS_VERSION
+METRICS_TRENDS_CSS_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "metrics-trends.css").read_bytes()).hexdigest()[:12]
+templates.env.globals["metrics_trends_css_version"] = METRICS_TRENDS_CSS_VERSION
 ADMIN_ICON_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "guardian.png").read_bytes()).hexdigest()[:12]
 templates.env.globals["admin_icon_version"] = ADMIN_ICON_VERSION
 
@@ -43,6 +45,14 @@ MISSION_LEVELS = [
         ("math.basic_operations_1.addition", "Sumas", "Resolver sumas básicas."),
         ("math.basic_operations_1.subtraction", "Restas", "Resolver restas básicas."),
         ("math.basic_operations_1.multiplication", "Multiplicaciones", "Resolver multiplicaciones básicas."),
+        ("math.basic_operations_1.exact_division_one_digit", "Divisiones exactas · divisor de una cifra", "Resolver divisiones exactas con divisor de una cifra."),
+        ("math.basic_operations_1.exact_division_two_digits", "Divisiones exactas · divisor de dos cifras", "Resolver divisiones exactas con divisor de dos cifras sin ceros."),
+        ("math.basic_operations_1.exact_division_tens", "Divisiones exactas · decenas", "Resolver divisiones exactas con decenas."),
+        ("math.basic_operations_1.multiply_by_powers_of_ten", "Multiplicaciones por 10, 100 y 1000", "Multiplicar números por 10, 100 y 1000."),
+    ]),
+    ("math", "word_problems_1", "Situaciones problemáticas", "Situaciones cotidianas de una sola operación.", [
+        ("math.word_problems_1.everyday_addition", "Problemas cotidianos de suma", "Resolver situaciones en las que se agregan cantidades."),
+        ("math.word_problems_1.everyday_subtraction", "Problemas cotidianos de resta", "Resolver situaciones en las que se quitan cantidades."),
     ]),
     ("comprehension", "functional_1", "Comprensión funcional", "Preguntas cotidianas sobre identidad, edad, fechas, calendario y estaciones.", [
         ("comprehension.functional_1.identity", "Identidad", "Comprender distintas formas de solicitar información básica de identificación."),
@@ -52,6 +62,10 @@ MISSION_LEVELS = [
         ("comprehension.functional_1.temporal_relations", "Relaciones temporales", "Comprender referencias como ayer, mañana, mes anterior y mes siguiente."),
         ("comprehension.functional_1.calendar", "Calendario", "Reconocer días, meses y su secuencia."),
         ("comprehension.functional_1.seasons", "Estaciones", "Reconocer estaciones, características y secuencia."),
+        ("comprehension.functional_1.personal_location", "Ubicación personal", "Reconocer ciudad, provincia y país de residencia."),
+    ]),
+    ("comprehension", "explicit_information_1", "Información explícita", "Encontrar información escrita de forma literal en una oración breve.", [
+        ("comprehension.explicit_information_1.one_sentence_literal", "Información explícita en una oración", "Responder usando un dato que aparece en una oración."),
     ]),
 ]
 
@@ -441,7 +455,7 @@ def logout():
 
 
 @router.post("/devices/{device_id}/config")
-def update_device_config(device_id: str, request: Request, display_name: str = Form(""), interval_minutes: int = Form(...), missions_submitted: str = Form(""), enabled_skills: list[str] = Form([]), preferred_name: str = Form(""), first_name: str = Form(""), middle_name: str = Form(""), last_name: str = Form(""), birth_date: str = Form(""), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
+def update_device_config(device_id: str, request: Request, display_name: str = Form(""), interval_minutes: int = Form(...), missions_submitted: str = Form(""), enabled_skills: list[str] = Form([]), preferred_name: str = Form(""), first_name: str = Form(""), middle_name: str = Form(""), last_name: str = Form(""), birth_date: str = Form(""), city: str = Form(""), province: str = Form(""), country: str = Form(""), db: Session = Depends(get_db), admin: AdminUser = Depends(current_admin)):
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status_code=404)
@@ -472,7 +486,7 @@ def update_device_config(device_id: str, request: Request, display_name: str = F
         if mission_config.get("enabledSkills") != selected:
             config.mission_config = {"enabledSkills": selected}
             changed = True
-        clean = {"preferred_name": preferred_name.strip() or None, "first_name": first_name.strip() or None, "middle_name": middle_name.strip() or None, "last_name": last_name.strip() or None, "birth_date": birth_date.strip() or None}
+        clean = {"preferred_name": preferred_name.strip() or None, "first_name": first_name.strip() or None, "middle_name": middle_name.strip() or None, "last_name": last_name.strip() or None, "birth_date": birth_date.strip() or None, "city": city.strip() or None, "province": province.strip() or None, "country": country.strip() or None}
         if clean["birth_date"]:
             try:
                 date_cls.fromisoformat(clean["birth_date"])

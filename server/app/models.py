@@ -80,6 +80,9 @@ class DeviceMissionProfile(Base):
     middle_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     birth_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    province: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc, nullable=False)
 

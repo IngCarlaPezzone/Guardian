@@ -1141,7 +1141,7 @@ namespace Guardian
             var missionConfig = _config.MissionConfig;
             var skills = missionConfig == null || missionConfig.EnabledSkills == null ? "" : string.Join("|", missionConfig.EnabledSkills.ToArray());
             var profile = missionConfig == null ? null : missionConfig.PrivateProfile;
-            return skills + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.PreferredName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.FirstName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.LastName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.BirthDate));
+            return skills + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.PreferredName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.FirstName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.LastName)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.BirthDate)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.City)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.Province)) + "|" + (profile != null && !string.IsNullOrWhiteSpace(profile.Country));
         }
 
         private void OnRemoteConfigTick(object sender, EventArgs e)
@@ -2057,6 +2057,7 @@ namespace Guardian
         private bool _hadOrthographicError;
         private int _writingCorrectionCount;
         private bool _writingAnswerRevealed;
+        private string _lastSemanticAnswer;
 
         public event Action UnlockRequested;
         public event Action AdminShutdownRequested;
@@ -2304,10 +2305,19 @@ namespace Guardian
             if (result == MissionAnswerResult.Invalid)
             {
                 _feedbackIcon.Visibility = Visibility.Collapsed;
-                _feedback.Text = "Revis\u00e1 la respuesta e intent\u00e1 de nuevo.";
+                var supportsHelp = _mission.CategoryId == "math" && _mission.LevelId == "word_problems_1" && _mission.HelpSteps != null && _mission.HelpSteps.Count > 0;
+                _feedback.Text = supportsHelp ? "La respuesta tiene que ser un n\u00famero." : "Revis\u00e1 la respuesta e intent\u00e1 de nuevo.";
                 var invalidPayload = TelemetryPayload(originalAnswer, "invalid_input");
                 invalidPayload["reason"] = "invalid_input";
                 _logger.Log("MissionFailed", invalidPayload);
+                if (supportsHelp)
+                {
+                    _lastSemanticAnswer = originalAnswer;
+                    _routine.Visibility = Visibility.Visible;
+                    _helpProgression.RegisterSemanticFailure();
+                    UpdateHelpButton();
+                    _answerBox.SelectAll();
+                }
                 _attempt++;
                 return;
             }
@@ -2335,6 +2345,7 @@ namespace Guardian
                 _feedback.Text = "";
                 _routine.Visibility = Visibility.Visible;
                 var failedPayload = TelemetryPayload(originalAnswer, "wrong_answer");
+                _lastSemanticAnswer = originalAnswer;
                 _helpProgression.RegisterSemanticFailure();
                 UpdateHelpButton();
                 _answerBox.SelectAll();
@@ -2368,7 +2379,8 @@ namespace Guardian
         private void ShowHelp(int next)
         {
             MissionHelpStep step = null;
-            if (_mission.HelpSteps != null) foreach (var candidate in _mission.HelpSteps) if (candidate.HelpLevel == next) { step = candidate; break; }
+            if (_mission.SkillId == "personal_location") step = MissionContent.AdaptiveHelpStep(_mission, next, _lastSemanticAnswer);
+            else if (_mission.HelpSteps != null) foreach (var candidate in _mission.HelpSteps) if (candidate.HelpLevel == next) { step = candidate; break; }
             if (step == null) return;
             var text = new TextBlock { Text = step.Text, Foreground = new SolidColorBrush(Color.FromRgb(30, 64, 175)), FontSize = 17, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(7, 4, 0, 4), MaxWidth = 560 };
             var helpRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center };
@@ -3302,6 +3314,7 @@ namespace Guardian
             CheckMissionTelemetryPayload(failures);
             CheckMissionHelpProgression(failures);
             CheckMissionRotationAndComprehension(failures);
+            CheckNewMissionSkills(failures);
             CheckMissionUnavailableDeduplication(failures);
             CheckAdminAuth(failures);
             CheckMediaPolicy(failures);
@@ -3533,6 +3546,65 @@ namespace Guardian
                 if (!telemetry.ContainsKey("skill_level_id") || !telemetry.ContainsKey("max_help_level") || telemetry.ContainsKey("input") || telemetry.ContainsKey("accepted_answer")) failures.Add("mission telemetry help fields or privacy boundary failed");
             }
             finally { GuardianClock.LocalNowProvider = originalClock; }
+        }
+
+        private static void CheckNewMissionSkills(List<string> failures)
+        {
+            var catalog = new MissionCatalog();
+            var empty = new PrivateMissionProfile();
+            var directSkills = new[] {
+                "math.basic_operations_1.exact_division_one_digit", "math.basic_operations_1.exact_division_two_digits",
+                "math.basic_operations_1.exact_division_tens", "math.basic_operations_1.multiply_by_powers_of_ten"
+            };
+            foreach (var skill in directSkills)
+            {
+                for (var i = 0; i < 80; i++)
+                {
+                    var mission = catalog.Generate(skill, empty, new Dictionary<string, string>(), new Random(i));
+                    if (mission == null || mission.HelpSteps == null || mission.HelpSteps.Count != 0) { failures.Add("direct math operations must generate without help"); break; }
+                    var parts = mission.Prompt.Split(' '); int left, right, expected;
+                    if (parts.Length < 5 || !Int32.TryParse(parts[0], out left) || !Int32.TryParse(parts[2], out right) || !Int32.TryParse(mission.AcceptedAnswers[0], out expected)) { failures.Add("new direct math prompt shape failed"); break; }
+                    if (skill.IndexOf("division", StringComparison.Ordinal) >= 0 && (left % right != 0 || left / right != expected)) { failures.Add("division must be exact"); break; }
+                    if (skill.EndsWith("one_digit", StringComparison.Ordinal) && (right < 2 || right > 9 || left < 12 || left > 81)) { failures.Add("one-digit division range failed"); break; }
+                    if (skill.EndsWith("two_digits", StringComparison.Ordinal) && (right < 11 || right > 25 || right % 10 == 0)) { failures.Add("two-digit division range failed"); break; }
+                    if (skill.EndsWith("tens", StringComparison.Ordinal) && (right < 10 || right > 50 || right % 10 != 0)) { failures.Add("tens division range failed"); break; }
+                    if (skill.EndsWith("powers_of_ten", StringComparison.Ordinal) && (left < 1 || left > 20 || (right != 10 && right != 100 && right != 1000) || left * right != expected)) { failures.Add("powers-of-ten multiplication range failed"); break; }
+                }
+            }
+
+            var additionVariants = GeneratedVariants("math.word_problems_1.everyday_addition", empty);
+            var subtractionVariants = GeneratedVariants("math.word_problems_1.everyday_subtraction", empty);
+            if (additionVariants.Count != 6 || subtractionVariants.Count != 6) failures.Add("word problem variants missing");
+            foreach (var skill in new[] { "math.word_problems_1.everyday_addition", "math.word_problems_1.everyday_subtraction" })
+            {
+                for (var i = 0; i < 80; i++)
+                {
+                    var mission = catalog.Generate(skill, empty, new Dictionary<string, string>(), new Random(i));
+                    if (mission == null || mission.HelpSteps == null || mission.HelpSteps.Count != 3) { failures.Add("word problems must have three help levels"); break; }
+                    foreach (var step in mission.HelpSteps) if (step.Text.IndexOf("{", StringComparison.Ordinal) >= 0) failures.Add("word problem help exposed placeholder");
+                }
+            }
+
+            var incompleteLocation = new PrivateMissionProfile { City = "Ciudad Ejemplo", Province = "Provincia Ejemplo" };
+            if (catalog.CanGenerate("comprehension.functional_1.personal_location", incompleteLocation)) failures.Add("incomplete location profile must not generate");
+            var locationProfile = new PrivateMissionProfile { City = "Ciudad Ejemplo", Province = "Provincia Ejemplo", Country = "País Ejemplo" };
+            var locationVariants = GeneratedVariants("comprehension.functional_1.personal_location", locationProfile);
+            if (locationVariants.Count != 9) failures.Add("personal location variants missing");
+            var cityMission = FindVariant("comprehension.functional_1.personal_location", locationProfile, "location_city_ask_1");
+            if (cityMission == null || MissionValidator.Validate("Ciudad Ejemplo", cityMission) != MissionAnswerResult.Correct) failures.Add("configured city should solve location mission");
+            if (cityMission == null || MissionValidator.Validate("Ciudad Ejemlpo", cityMission) != MissionAnswerResult.OrthographicNearMatch) failures.Add("near city spelling must use orthographic support");
+            var confused = MissionContent.AdaptiveHelpStep(cityMission, 2, "Provincia Ejemplo");
+            var unrelated = MissionContent.AdaptiveHelpStep(cityMission, 2, "otoño");
+            if (confused == null || confused.Text.IndexOf("es la provincia", StringComparison.Ordinal) < 0) failures.Add("location help must identify province confusion");
+            if (unrelated == null || unrelated.Text != "Recordá cómo se llama la ciudad donde está tu casa.") failures.Add("location fallback help failed");
+
+            var explicitVariants = GeneratedVariants("comprehension.explicit_information_1.one_sentence_literal", empty);
+            if (explicitVariants.Count != 12) failures.Add("explicit information variants missing");
+            for (var i = 0; i < 120; i++)
+            {
+                var mission = catalog.Generate("comprehension.explicit_information_1.one_sentence_literal", empty, new Dictionary<string, string>(), new Random(i));
+                if (mission == null || mission.HelpSteps.Count != 3) { failures.Add("explicit information must have three help levels"); break; }
+            }
         }
 
         private static HashSet<string> GeneratedVariants(string skill, PrivateMissionProfile profile)
