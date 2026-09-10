@@ -10,7 +10,7 @@ def test_normalize_event_keeps_only_educational_whitelist():
         "occurred_at": "2026-08-23T12:00:00Z",
         "event_type": "MissionSolved",
         "client_version": "0.4.1",
-        "payload": {"mission_id": "m1", "attempt": 2, "answer": "private", "preferred_name": "private"},
+        "payload": {"mission_id": "m1", "attempt": 2, "answer": "private", "question_text": "private", "city": "private", "province": "private", "country": "private", "preferred_name": "private"},
     }, 4)
     assert event["payload"] == {"mission_id": "m1", "attempt": 2, "import_source": DATASET_MARKER}
     assert event["event_id"]

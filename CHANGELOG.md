@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.9 — Nuevas habilidades de Matemática y Comprensión
+
+- Agrega divisiones exactas en tres habilidades configurables y multiplicaciones por 10, 100 y 1000, sin ayudas en las operaciones directas.
+- Incorpora el nivel Matemática → Situaciones problemáticas con problemas cotidianos de suma y resta, seis variantes por habilidad y tres ayudas específicas por consigna.
+- Incorpora Ubicación personal con ciudad, provincia y país en el perfil privado, preguntas directas y relacionales, y una segunda ayuda que distingue confusiones entre esos datos de una respuesta no relacionada.
+- Incorpora Comprensión → Información explícita con doce variantes de una oración y ayudas progresivas.
+- La migración `0007_personal_location` agrega los campos del perfil; Admin, RemoteConfig, métricas y tests se amplían sin activar automáticamente las nuevas habilidades.
+- Reorganiza la configuración de misiones como Categoría → Nivel → Habilidades, evita títulos de categoría repetidos y mantiene los tooltips dentro de la pantalla.
+
 ## 0.4.8 — Respuestas numéricas argentinas y tendencias de métricas
 
 - Matemática compara valores numéricos con formato argentino: acepta ceros a la izquierda, coma decimal y puntos de miles válidos, sin reinterpretar formatos ambiguos. Comprensión conserva su normalización anterior.

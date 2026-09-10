@@ -29,7 +29,11 @@ namespace Guardian
             { "tomorrow_weekday", "¿Qué día de la semana es mañana?" }, { "yesterday_weekday", "¿Qué día de la semana fue ayer?" }, { "next_month_ask_1", "¿Cuál es el mes que viene?" }, { "previous_month", "¿Cuál fue el mes pasado?" },
             { "days_in_week", "¿Cuántos días tiene una semana?" }, { "months_in_year", "¿Cuántos meses tiene un año?" }, { "weekday_after", "¿Qué día de la semana viene después del {0}?" }, { "weekday_before", "¿Qué día viene antes del {0}?" }, { "month_after", "¿Qué mes viene después de {0}?" }, { "month_before", "¿Qué mes viene antes de {0}?" },
             { "season_cold", "¿Cuál es la estación del año en la que hace mucho frío?" }, { "season_hot", "¿Cuál es la estación del año en la que hace mucho calor?" }, { "season_falling_leaves", "¿En qué estación se caen muchas hojas de los árboles?" }, { "season_flowers", "¿En qué estación suelen crecer muchas flores?" }, { "season_after", "¿Qué estación viene después del {0}?" },
-            { "vocab_how_many", "⭐⭐⭐⭐ ¿Cuántas estrellas hay?" }, { "vocab_quantity", "Hay 3 lápices. ¿Cuántos lápices hay?" }, { "vocab_before", "Lunes, martes, miércoles. ¿Qué día está antes de miércoles?" }, { "vocab_after", "Enero, febrero, marzo. ¿Qué mes está después de febrero?" }, { "vocab_next", "Uno, dos, tres... ¿qué número es el siguiente?" }, { "vocab_previous", "Uno, dos, tres... ¿qué número es el anterior a tres?" }, { "vocab_first", "Rojo, azul, verde. ¿Cuál está primero?" }, { "vocab_last", "Rojo, azul, verde. ¿Cuál está último?" }
+            { "vocab_how_many", "⭐⭐⭐⭐ ¿Cuántas estrellas hay?" }, { "vocab_quantity", "Hay 3 lápices. ¿Cuántos lápices hay?" }, { "vocab_before", "Lunes, martes, miércoles. ¿Qué día está antes de miércoles?" }, { "vocab_after", "Enero, febrero, marzo. ¿Qué mes está después de febrero?" }, { "vocab_next", "Uno, dos, tres... ¿qué número es el siguiente?" }, { "vocab_previous", "Uno, dos, tres... ¿qué número es el anterior a tres?" }, { "vocab_first", "Rojo, azul, verde. ¿Cuál está primero?" }, { "vocab_last", "Rojo, azul, verde. ¿Cuál está último?" },
+            { "add_strawberries", "Hay {0} frutillas en casa. Papá compra {1} frutillas más. ¿Cuántas frutillas hay en total?" }, { "add_stickers", "{0} figuritas están en el álbum. Agregás {1} figuritas. ¿Cuántas figuritas hay en el álbum?" }, { "add_pencils", "En la cartuchera hay {0} lápices. Guardás {1} lápices más. ¿Cuántos lápices hay en total?" }, { "add_balloons", "Hay {0} globos en la mesa. Traen {1} globos más. ¿Cuántos globos hay en total?" }, { "add_cookies", "Hay {0} galletitas en el plato. Ponés {1} galletitas más. ¿Cuántas galletitas hay en total?" }, { "add_blocks", "Tenés {0} bloques. Te regalan {1} bloques. ¿Cuántos bloques tenés en total?" },
+            { "subtract_strawberries", "Hay {0} frutillas en casa. Comen {1}. ¿Cuántas frutillas quedan?" }, { "subtract_stickers", "Tenés {0} figuritas. Regalás {1}. ¿Cuántas figuritas te quedan?" }, { "subtract_pencils", "Tenés {0} lápices. Perdés {1}. ¿Cuántos lápices te quedan?" }, { "subtract_balloons", "Hay {0} globos en la mesa. Se pinchan {1}. ¿Cuántos globos quedan?" }, { "subtract_cookies", "Hay {0} galletitas en el plato. Comés {1}. ¿Cuántas galletitas quedan?" }, { "subtract_blocks", "Tenés {0} bloques tirados en el piso. Guardás {1} en una caja. ¿Cuántos bloques te faltan guardar?" },
+            { "location_city_ask_1", "¿En qué ciudad vivís?" }, { "location_city_ask_2", "¿Cuál es la ciudad donde vivís?" }, { "location_province_ask_1", "¿En qué provincia vivís?" }, { "location_province_ask_2", "¿Cuál es la provincia donde vivís?" }, { "location_country_ask_1", "¿En qué país vivís?" }, { "location_country_ask_2", "¿Cuál es el país donde vivís?" }, { "location_city_to_province", "¿En qué provincia se encuentra {0}?" }, { "location_province_to_country", "¿En qué país se encuentra {0}?" }, { "location_city_to_country", "¿En qué país se encuentra {0}?" },
+            { "explicit_color_balloon", "Emma tiene un globo rojo. ¿De qué color es el globo?" }, { "explicit_when_doctor", "Matías tiene turno con la doctora el miércoles. ¿Cuándo tiene turno Matías con la doctora?" }, { "explicit_when_party", "La fiesta de Ana es el sábado. ¿Cuándo es la fiesta de Ana?" }, { "explicit_owner_ball", "Tomás tiene una pelota. ¿Quién tiene la pelota?" }, { "explicit_owner_book", "Lucía tiene un libro. ¿Quién tiene el libro?" }, { "explicit_location_cup", "La taza está en la mesa. ¿Dónde está la taza?" }, { "explicit_location_ball", "La pelota está debajo de la silla. ¿Dónde está la pelota?" }, { "explicit_quantity_cats", "Hay 3 gatos en el patio. ¿Cuántos gatos hay?" }, { "explicit_quantity_pencils", "Hay 4 lápices en la caja. ¿Cuántos lápices hay?" }, { "explicit_action_nina", "Nina dibuja una flor. ¿Qué dibuja Nina?" }, { "explicit_action_mateo", "Mateo come una manzana. ¿Qué come Mateo?" }, { "explicit_object_dog", "El perro duerme en su cama. ¿Dónde duerme el perro?" }
         };
 
         public static string PromptFor(string variantId, params object[] values)
@@ -85,9 +89,63 @@ namespace Guardian
             else if (id == "vocab_previous") { one="¿Qué significa ANTERIOR?"; two="Anterior quiere decir el que está justo antes."; three="Completá: 1, ___, 3."; }
             else if (id == "vocab_first") { one="¿Qué significa PRIMERO?"; two="Primero es el que está antes que todos los demás."; three="Mirá: rojo → azul → verde. ¿Cuál está al comienzo?"; }
             else if (id == "vocab_last") { one="¿Qué significa ÚLTIMO?"; two="Último es el que está después de todos los demás."; three="Mirá: rojo → azul → verde. ¿Cuál está al final?"; }
+            else if (id == "add_strawberries") { one="La pregunta pide saber cuántas frutillas hay en total."; two="La palabra MÁS avisa que se agregan frutillas."; three="Cuando se agregan más frutillas, se suman: {a} + {b} = ___."; }
+            else if (id == "add_stickers") { one="La pregunta pide el total de figuritas que hay en el álbum."; two="AGREGAR significa sumar algo a lo que ya había."; three="Agregar figuritas es sumar: {a} + {b} = ___."; }
+            else if (id == "add_pencils") { one="La pregunta pide cuántos lápices hay en total."; two="MÁS indica que entran lápices nuevos."; three="Como entran más lápices, sumá: {a} + {b} = ___."; }
+            else if (id == "add_balloons") { one="La pregunta pide el total de globos."; two="La palabra MÁS indica que la cantidad aumenta."; three="Para saber el total cuando llegan más, sumá: {a} + {b} = ___."; }
+            else if (id == "add_cookies") { one="La pregunta pide cuántas galletitas hay en total."; two="PONER MÁS hace que haya una cantidad mayor."; three="Al poner más, la cantidad aumenta: {a} + {b} = ___."; }
+            else if (id == "add_blocks") { one="La pregunta pide cuántos bloques tenés en total."; two="Un REGALO agrega bloques a los que ya tenías."; three="Un regalo agrega bloques: {a} + {b} = ___."; }
+            else if (id == "subtract_strawberries") { one="La pregunta pide saber cuántas frutillas quedan."; two="COMEN indica que se sacan frutillas de las que había."; three="Cuando se sacan frutillas, se resta: {a} − {b} = ___."; }
+            else if (id == "subtract_stickers") { one="La pregunta pide las figuritas que quedan después de regalar."; two="REGALAR hace que tengas menos figuritas."; three="Regalar quita figuritas: {a} − {b} = ___."; }
+            else if (id == "subtract_pencils") { one="La pregunta pide los lápices que te quedan."; two="PERDER significa que ya no tenés algunos lápices."; three="Los lápices perdidos se sacan de los que tenías: {a} − {b} = ___."; }
+            else if (id == "subtract_balloons") { one="La pregunta pide los globos que quedan."; two="SE PINCHAN indica que algunos globos ya no están."; three="Si algunos globos ya no están, restá: {a} − {b} = ___."; }
+            else if (id == "subtract_cookies") { one="La pregunta pide cuántas galletitas quedan en el plato."; two="COMER quita galletitas del plato."; three="Comer quita galletitas del plato: {a} − {b} = ___."; }
+            else if (id == "subtract_blocks") { one="La pregunta pide los bloques que todavía faltan guardar."; two="GUARDAR algunos bloques deja otros sin guardar."; three="Los que guardaste se sacan de los que había en el piso: {a} − {b} = ___."; }
+            else if (id == "location_city_ask_1" || id == "location_city_ask_2") { one="La pregunta pide el nombre de tu ciudad."; two="Recordá cómo se llama la ciudad donde está tu casa."; three="Tu ciudad es {city}. Escribila."; }
+            else if (id == "location_province_ask_1" || id == "location_province_ask_2") { one="La pregunta pide el nombre de tu provincia."; two="Recordá cómo se llama la provincia donde está tu ciudad."; three="Tu provincia es {province}. Escribila."; }
+            else if (id == "location_country_ask_1" || id == "location_country_ask_2") { one="La pregunta pide el nombre de tu país."; two="Pensá: vivís en la provincia de {province}, que es una de las provincias de tu país."; three="Tu país es {country}. Escribilo."; }
+            else if (id == "location_city_to_province") { one="La pregunta pide el nombre de una provincia."; two="Recordá cómo se llama la provincia donde está tu ciudad."; three="{city} está en la provincia de {province}. Escribí {province}."; }
+            else if (id == "location_province_to_country") { one="La pregunta pide el nombre de un país."; two="Pensá: {province} es una de las provincias de tu país."; three="{province} está en {country}. Escribí {country}."; }
+            else if (id == "location_city_to_country") { one="La pregunta pide el nombre de un país."; two="Pensá: {city} está en la provincia de {province}, que es una de las provincias de tu país."; three="{city} está en {country}. Escribí {country}."; }
+            else if (id == "explicit_color_balloon") { one="La pregunta pide el color del globo."; two="Buscá la palabra que dice cómo es el globo."; three="La oración dice ‘un globo rojo’. El color es rojo."; }
+            else if (id == "explicit_when_doctor") { one="La pregunta pide saber cuándo tiene turno Matías."; two="Buscá la palabra que dice el día del turno."; three="La oración dice ‘el miércoles’. Matías tiene turno el miércoles."; }
+            else if (id == "explicit_when_party") { one="La pregunta pide saber cuándo es la fiesta."; two="Buscá la palabra que dice el día de la fiesta."; three="La oración dice ‘el sábado’. La fiesta es el sábado."; }
+            else if (id == "explicit_owner_ball") { one="La pregunta pide el nombre de la persona que tiene la pelota."; two="Buscá quién aparece junto a la pelota."; three="La oración dice ‘Tomás tiene una pelota’. La tiene Tomás."; }
+            else if (id == "explicit_owner_book") { one="La pregunta pide el nombre de la persona que tiene el libro."; two="Buscá quién aparece junto al libro."; three="La oración dice ‘Lucía tiene un libro’. Lo tiene Lucía."; }
+            else if (id == "explicit_location_cup") { one="La pregunta pide el lugar de la taza."; two="Buscá la palabra que dice dónde está."; three="La oración dice ‘en la mesa’. La taza está en la mesa."; }
+            else if (id == "explicit_location_ball") { one="La pregunta pide el lugar de la pelota."; two="Buscá las palabras que dicen dónde está."; three="La oración dice ‘debajo de la silla’. La pelota está debajo de la silla."; }
+            else if (id == "explicit_quantity_cats") { one="La pregunta pide una cantidad de gatos."; two="Buscá el número que acompaña a la palabra gatos."; three="La oración dice ‘Hay 3 gatos’. Escribí 3."; }
+            else if (id == "explicit_quantity_pencils") { one="La pregunta pide una cantidad de lápices."; two="Buscá el número que acompaña a la palabra lápices."; three="La oración dice ‘Hay 4 lápices’. Escribí 4."; }
+            else if (id == "explicit_action_nina") { one="La pregunta pide qué está dibujando Nina."; two="Buscá la palabra que aparece después de ‘dibuja’."; three="La oración dice ‘dibuja una flor’. Nina dibuja una flor."; }
+            else if (id == "explicit_action_mateo") { one="La pregunta pide qué está comiendo Mateo."; two="Buscá la palabra que aparece después de ‘come’."; three="La oración dice ‘come una manzana’. Mateo come una manzana."; }
+            else if (id == "explicit_object_dog") { one="La pregunta pide el lugar donde duerme el perro."; two="Buscá las palabras que aparecen después de ‘duerme’."; three="La oración dice ‘duerme en su cama’. El perro duerme en su cama."; }
 
             if (one == null || two == null || three == null) throw new InvalidOperationException("Faltan ayudas para la variante " + id + ".");
             return new List<MissionHelpStep> { Step(1, Resolve(one, mission)), Step(2, Resolve(two, mission)), Step(3, Resolve(three, mission)) };
+        }
+
+        public static MissionHelpStep AdaptiveHelpStep(Mission mission, int level, string previousAnswer)
+        {
+            var steps = HelpSteps(mission);
+            if (level != 2 || mission.SkillId != "personal_location") return steps.Find(delegate(MissionHelpStep item) { return item.HelpLevel == level; });
+            var context = mission.ContentContext;
+            var answer = MissionText.Normalize(previousAnswer);
+            var city = MissionText.Normalize(context.City);
+            var province = MissionText.Normalize(context.Province);
+            var country = MissionText.Normalize(context.Country);
+            var asksCity = mission.VariantId == "location_city_ask_1" || mission.VariantId == "location_city_ask_2";
+            var asksProvince = mission.VariantId == "location_province_ask_1" || mission.VariantId == "location_province_ask_2" || mission.VariantId == "location_city_to_province";
+            string text;
+            if (asksCity && answer == province) text = "{province} es la provincia. Te pregunta la ciudad: recordá cómo se llama la ciudad donde está tu casa.";
+            else if (asksCity && answer == country) text = "{country} es el país. Te pregunta la ciudad: recordá cómo se llama la ciudad donde está tu casa.";
+            else if (asksCity) text = "Recordá cómo se llama la ciudad donde está tu casa.";
+            else if (asksProvince && answer == city) text = "{city} es la ciudad. Te pregunta la provincia donde está esa ciudad.";
+            else if (asksProvince && answer == country) text = "{country} es el país. Te pregunta la provincia donde está tu ciudad.";
+            else if (asksProvince) text = "Recordá cómo se llama la provincia donde está tu ciudad.";
+            else if (answer == city) text = "{city} es la ciudad. Te pregunta el país donde vivís.";
+            else if (answer == province) text = "{province} es una provincia. Pensá: vivís en la provincia de {province}, que es una de las provincias de tu país.";
+            else text = "Pensá: vivís en la provincia de {province}, que es una de las provincias de tu país.";
+            return Step(2, Resolve(text, mission));
         }
 
         private static string NicknameOrFallback(MissionContentContext context)
@@ -103,6 +161,11 @@ namespace Guardian
             text = ReplaceRequired(text, "{todayWeekday}", context == null ? null : context.TodayWeekday, mission.VariantId);
             text = ReplaceRequired(text, "{currentMonth}", context == null ? null : context.CurrentMonth, mission.VariantId);
             text = ReplaceRequired(text, "{0}", context == null ? null : context.Value, mission.VariantId);
+            text = ReplaceRequired(text, "{a}", context == null ? null : context.FirstQuantity, mission.VariantId);
+            text = ReplaceRequired(text, "{b}", context == null ? null : context.SecondQuantity, mission.VariantId);
+            text = ReplaceRequired(text, "{city}", context == null ? null : context.City, mission.VariantId);
+            text = ReplaceRequired(text, "{province}", context == null ? null : context.Province, mission.VariantId);
+            text = ReplaceRequired(text, "{country}", context == null ? null : context.Country, mission.VariantId);
             return text;
         }
 

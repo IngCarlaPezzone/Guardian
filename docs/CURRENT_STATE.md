@@ -140,6 +140,17 @@ La importación sanitizada también fue validada manualmente contra PROD: la pri
 
 Nunca se utiliza una feature branch sobre PROD para una vista previa visual o funcional.
 
+## Nuevas habilidades de Matemática y Comprensión — aprobadas en STG
+
+La rama `feature/new-math-comprehension-skills` implementa el catálogo aprobado en `docs/PROPUESTA_ITERACION_HABILIDADES_MATEMATICA_Y_COMPRENSION.md`:
+
+- Operaciones básicas: tres habilidades de división exacta y multiplicaciones por 10, 100 y 1000, sin ayudas.
+- Matemática → Situaciones problemáticas: problemas cotidianos de suma y resta con ayudas progresivas específicas.
+- Comprensión funcional: Ubicación personal, respaldada por ciudad, provincia y país del perfil privado y una ayuda 2 adaptada a la respuesta previa.
+- Comprensión → Información explícita: doce variantes de una oración.
+
+La migración `0007_personal_location` fue validada desde una base vacía y aplicada en PostgreSQL STG. El contenedor `guardian-stg-app` quedó saludable y el Admin STG mostró el catálogo, los tres campos nuevos y la jerarquía visual Categoría → Nivel → Habilidades. La validación manual de las misiones fue aprobada. Pasan los tests de servidor, build y self-tests. La RC `0.4.9-rc.1` completó correctamente el updater en Guardian TEST desde `0.4.9-staging-new-skills.1`, reinició desde el home aislado y volvió a reportar heartbeat. Queda habilitada la promoción controlada de `0.4.9` a PROD, comenzando exclusivamente por PC TEST. El dispositivo productivo final permanece fuera del rollout.
+
 ## Stage 3 — Admin y métricas (servidor/Admin en PROD; cliente 0.4.8 publicado)
 
 Stage 3A/3B de servidor/Admin está desplegado en PROD desde main. Las migraciones 0005_device_timezone y 0006_device_kind llegaron a head con datos existentes preservados. Los clientes anteriores continúan funcionando y reportando heartbeats/RemoteConfig. El cliente Guardian 0.4.8 está publicado en PROD; su validación controlada por dispositivo continúa el rollout obligatorio PC TEST → dispositivo productivo final.
@@ -147,10 +158,12 @@ Stage 3A/3B de servidor/Admin está desplegado en PROD desde main. Las migracion
 - Admin con cards compactas: `display_name` principal, hostname secundario, estado operativo y acciones remotas agrupadas.
 - Configuración unificada de nombre visible, intervalo, skills y perfil privado; la zona horaria es técnica, automática y no editable en Admin.
 - Activity con fecha y hora local del dispositivo, filtros de período, categorías humanas, eventos técnicos opcionales y resumen compacto. El payload JSON queda persistido en servidor, pero la tabla actual no lo muestra ni expone las respuestas escritas.
-- Métricas agregadas server-side por `mission_id`, con compatibilidad `missionId`, reintentos deduplicados, drill-down Global → Categoría → Nivel → Skill y variantes bajo demanda. Global usa métricas comunes; Comprensión muestra ayudas y ortografía, mientras Matemática conserva su distribución por intento.
-- Para rangos de dos o más días, Métricas muestra tendencias diarias: misiones como barras apiladas e intentos como líneas con doble eje Y. Global desglosa categorías; Categoría desglosa niveles; Nivel desglosa habilidades con paleta secundaria. Las líneas y barras conservan tooltips exactos y el JavaScript de tendencias usa hash para evitar caché obsoleto.
+- Métricas agregadas server-side por `mission_id`, con compatibilidad `missionId`, reintentos deduplicados, drill-down Global → Categoría → Nivel → Skill y variantes bajo demanda. Global usa métricas comunes; Comprensión muestra ayudas y ortografía, mientras Matemática conserva su distribución por intento. En el detalle de cada nivel, debajo del gráfico de tendencias, se agrega un seguimiento diario por habilidad basado sólo en intentos: verde cuando todas las misiones válidas del día se resolvieron al primer intento; amarillo, naranja y rojo según disminuye ese porcentaje; trama gris cuando hubo menos de tres misiones. Una habilidad queda "consolidada provisionalmente" sólo cuando, en los últimos tres días locales del rango, registró al menos tres misiones diarias y todas se resolvieron al primer intento. Es una recomendación visual y nunca altera la configuración automáticamente.
+- Para rangos de dos o más días, Métricas muestra tendencias diarias: misiones como barras apiladas e intentos como líneas con doble eje Y. Global desglosa categorías; Categoría desglosa niveles; Nivel desglosa habilidades con paleta secundaria. Las líneas y barras conservan tooltips exactos y el JavaScript de tendencias usa hash para evitar caché obsoleto. El contenedor del gráfico y su leyenda se centran para cualquier cantidad de días del rango, incluido cuando hay más de ocho días.
 - Matemática valida respuestas por valor numérico con formato argentino, incluidos ceros a la izquierda, puntos de miles válidos y coma decimal. Los formatos ambiguos permanecen inválidos y Comprensión no cambia.
 - La migración `0005_device_timezone` agrega la zona horaria a `DeviceConfiguration`; los timestamps de eventos continúan almacenados en UTC. El cliente `0.4.6` reporta su offset local en registro y heartbeat; los clientes `0.4.4` compatibles conservan `UTC` hasta actualizarse.
 - El Dashboard muestra por defecto sólo dispositivos `operational`. La migración `0006_device_kind` clasifica explícitamente fixtures `stg_demo` e importaciones `stg_imported_telemetry`, sin deduplicar por hostname; esos registros siguen disponibles para Activity/Métricas y pueden revisarse de forma deliberada en `/admin/?show_synthetic=true`.
 
 La versión 0.4.6 agrega telemetría de intentos: MissionFailed y MissionSolved incluyen answer con el texto original, attempt y helpLevel; los fallos incluyen failureReason. También acepta fechas naturales con o sin la preposición de entre día y mes. La versión 0.4.7 añade `question_text` a MissionStarted, exige un nuevo error semántico entre ayudas explícitas sucesivas y registra esos datos sólo en el pipeline de telemetría; respuestas y consignas no se replican en la importación sanitizada hacia STG.
+
+La visualización de seguimiento y el centrado del gráfico se validaron en STG con telemetría sanitizada y aprobación visual manual antes de actualizar sólo el contenedor de aplicación en PROD. No requirieron migraciones ni cambios sobre el volumen de base de datos.

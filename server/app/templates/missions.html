@@ -58,25 +58,48 @@
         <summary><span>Misiones</span><small>Habilidades habilitadas</small></summary>
         <div class="config-content">
           <input form="device-config-form" type="hidden" name="missions_submitted" value="1">
-          {% for category, level_id, title, tooltip, skills in levels %}
-          {% set selected_count = skills | selectattr('0', 'in', selected) | list | length %}
-          <section class="category-block mission-level" data-level="{{ level_id }}">
-            <h3 class="category-heading">{{ 'Matemática' if category == 'math' else 'Comprensión' }}</h3>
-            <div class="level-heading"><label class="check-control"><input form="device-config-form" type="checkbox" class="level-toggle" {{ 'checked' if selected_count == skills|length else '' }} data-indeterminate="{{ 'true' if selected_count and selected_count != skills|length else 'false' }}"> {{ title }}</label><span tabindex="0" class="tooltip" data-tooltip="{{ tooltip }}" aria-label="{{ tooltip }}">i</span></div>
-            <div class="skill-grid">{% for key, label, skill_tooltip in skills %}<label class="check-control skill-control"><input form="device-config-form" type="checkbox" name="enabled_skills" value="{{ key }}" {{ 'checked' if key in selected else '' }}> <span class="skill-label-tooltip" tabindex="0" data-tooltip="{{ skill_tooltip }}">{{ label }}</span></label>{% endfor %}</div>
-          </section>
+          <div class="mission-categories">
+          {% for category, category_levels in levels | groupby(0) %}
+            <section class="mission-category mission-category-{{ category }}">
+              <div class="mission-category-heading">
+                <span class="hierarchy-label">Categoría</span>
+                <h3>{{ 'Matemática' if category == 'math' else 'Comprensión' }}</h3>
+              </div>
+              <div class="mission-level-list">
+              {% for _, level_id, title, tooltip, skills in category_levels %}
+                {% set selected_count = skills | selectattr('0', 'in', selected) | list | length %}
+                <section class="mission-level" data-level="{{ level_id }}">
+                  <div class="level-heading">
+                    <div class="level-heading-main">
+                      <span class="hierarchy-label">Nivel</span>
+                      <label class="level-toggle-control"><input form="device-config-form" type="checkbox" class="level-toggle" {{ 'checked' if selected_count == skills|length else '' }} data-indeterminate="{{ 'true' if selected_count and selected_count != skills|length else 'false' }}"> {{ title }}</label>
+                    </div>
+                    <span tabindex="0" class="tooltip" data-tooltip="{{ tooltip }}" aria-label="{{ tooltip }}">i</span>
+                  </div>
+                  <div class="mission-skills">
+                    <span class="hierarchy-label">Habilidades</span>
+                    <div class="skill-grid">{% for key, label, skill_tooltip in skills %}<label class="check-control skill-control"><input form="device-config-form" type="checkbox" name="enabled_skills" value="{{ key }}" {{ 'checked' if key in selected else '' }}> <span class="skill-label-tooltip" tabindex="0" data-tooltip="{{ skill_tooltip }}">{{ label }}</span></label>{% endfor %}</div>
+                  </div>
+                </section>
+              {% endfor %}
+              </div>
+            </section>
           {% endfor %}
+          </div>
         </div>
       </details>
 
       <details class="card config-card" data-config-section="profile" open>
-        <summary><span>Perfil para misiones</span><small>{{ 'Configurado' if profile and (profile.preferred_name or profile.first_name or profile.last_name or profile.birth_date) else 'Incompleto' }}</small></summary>
+        <summary><span>Perfil para misiones</span><small>{{ 'Configurado' if profile and (profile.preferred_name or profile.first_name or profile.last_name or profile.birth_date or profile.city or profile.province or profile.country) else 'Incompleto' }}</small></summary>
         <div class="config-content form-grid two">
           <label>Nombre habitual<input form="device-config-form" name="preferred_name" value="{{ profile.preferred_name if profile else '' }}"></label>
           <label>Nombre<input form="device-config-form" name="first_name" value="{{ profile.first_name if profile else '' }}"></label>
           <label>Segundo nombre<input form="device-config-form" name="middle_name" value="{{ profile.middle_name if profile else '' }}"></label>
           <label>Apellido<input form="device-config-form" name="last_name" value="{{ profile.last_name if profile else '' }}"></label>
           <label>Fecha de nacimiento<input form="device-config-form" name="birth_date" type="date" value="{{ profile.birth_date if profile else '' }}"></label>
+          <label>Ciudad<input form="device-config-form" name="city" value="{{ profile.city if profile else '' }}"></label>
+          <label>Provincia<input form="device-config-form" name="province" value="{{ profile.province if profile else '' }}"></label>
+          <label>País<input form="device-config-form" name="country" value="{{ profile.country if profile else '' }}"></label>
         </div>
       </details>
       <div class="save-actions"><button form="device-config-form">Guardar cambios</button>{% if saved %}<span id="save-confirmation" class="save-confirmation" role="status">✓ Guardado</span>{% endif %}</div>

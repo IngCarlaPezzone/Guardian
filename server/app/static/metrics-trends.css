@@ -1,0 +1,10 @@
+.trend-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.trend-chart svg,
+.trend-chart .trend-legend {
+  flex: none;
+}
