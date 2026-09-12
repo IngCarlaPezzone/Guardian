@@ -9,6 +9,13 @@ namespace Guardian
         public const string RephraseButton = "Decilo de otra manera";
         public const string HintButton = "Dame una pista";
         public const string GuidedButton = "Guiame un poco más";
+        public const string NoAttemptFeedback = "LEÉ la pregunta y PENSÁ qué te está pidiendo. Vos podés.";
+        public const string NumberRequiredFeedback = "La respuesta es un NÚMERO.";
+
+        private static readonly string[] Weekdays = { "domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado" };
+        private static readonly string[] Months = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
+        private static readonly string[] Seasons = { "invierno", "primavera", "verano", "otoño" };
+        private static readonly string[] KeyboardRows = { "qwertyuiop", "asdfghjkl", "zxcvbnm" };
 
         public static string WritingFeedback(WritingDifference difference)
         {
@@ -20,6 +27,115 @@ namespace Guardian
         }
 
         public static string WritingAnswerRevealed(string answer) { return "Se escribe: " + answer + ". Ahora escribilo vos correctamente."; }
+
+        // Una respuesta que no parece una palabra no consume un intento ni abre ayudas.
+        // Las palabras reales de las misiones pueden escribirse con errores, por eso el
+        // corrector de la respuesta esperada se evalúa antes de llegar a este método.
+        public static MissionFeedback FeedbackForWrongAnswer(Mission mission, string answer, ISet<string> priorCandidates)
+        {
+            if (mission == null || string.Equals(mission.CategoryId, "math", StringComparison.OrdinalIgnoreCase)) return new MissionFeedback { Kind = MissionFeedbackKind.None };
+
+            var normalized = MissionText.Normalize(answer);
+            if (LooksLikeNoAttempt(normalized)) return new MissionFeedback { Kind = MissionFeedbackKind.NoAttempt, Text = NoAttemptFeedback };
+
+            string category;
+            string candidate;
+            if (!TryKnownCalendarCandidate(normalized, out category, out candidate)) return new MissionFeedback { Kind = MissionFeedbackKind.None };
+
+            var candidateKey = category + ":" + MissionText.Normalize(candidate);
+            var expectedCategory = ExpectedCalendarCategory(mission);
+            if (expectedCategory == null || expectedCategory != category)
+                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
+
+            if (priorCandidates != null && !priorCandidates.Contains(candidateKey) && HasPriorCandidateInCategory(priorCandidates, category))
+                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
+
+            return new MissionFeedback { Kind = MissionFeedbackKind.None, CandidateKey = candidateKey };
+        }
+
+        private static bool HasPriorCandidateInCategory(ISet<string> candidates, string category)
+        {
+            var prefix = category + ":";
+            foreach (var candidate in candidates) if (candidate.StartsWith(prefix, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        private static string ContextualText(string answer, string requested)
+        {
+            var written = (answer ?? "").Trim();
+            return "Pusiste " + written + ", pero te pide " + requested + ".";
+        }
+
+        private static bool LooksLikeNoAttempt(string normalized)
+        {
+            if (string.IsNullOrWhiteSpace(normalized)) return true;
+            if (normalized.IndexOf(' ') >= 0 || normalized.Length < 3) return false;
+            var allSame = true;
+            for (var i = 1; i < normalized.Length; i++) if (normalized[i] != normalized[0]) { allSame = false; break; }
+            if (allSame) return true;
+            foreach (var row in KeyboardRows) if (row.IndexOf(normalized, StringComparison.Ordinal) >= 0 || Reverse(row).IndexOf(normalized, StringComparison.Ordinal) >= 0) return true;
+            foreach (var c in normalized) if ("aeiouáéíóú".IndexOf(c) >= 0) return false;
+            return true;
+        }
+
+        private static string Reverse(string value) { var chars = value.ToCharArray(); Array.Reverse(chars); return new string(chars); }
+
+        private static bool TryKnownCalendarCandidate(string normalized, out string category, out string candidate)
+        {
+            category = null; candidate = null;
+            if (TryCandidate(normalized, Seasons, out candidate)) { category = "season"; return true; }
+            if (TryCandidate(normalized, Months, out candidate)) { category = "month"; return true; }
+            if (TryCandidate(normalized, Weekdays, out candidate)) { category = "weekday"; return true; }
+            return false;
+        }
+
+        private static bool TryCandidate(string normalized, string[] values, out string candidate)
+        {
+            candidate = null;
+            foreach (var value in values)
+            {
+                var expected = MissionText.Normalize(value);
+                if (normalized == expected) { candidate = value; return true; }
+                var limit = expected.Length <= 5 ? 1 : 2;
+                if (normalized.Length >= 3 && MissionValidator.DamerauLevenshtein(normalized, expected) <= limit) { candidate = value; return true; }
+            }
+            return false;
+        }
+
+        private static string ExpectedCalendarCategory(Mission mission)
+        {
+            var id = mission.VariantId ?? "";
+            if (id == "current_month_ask_1" || id == "current_month_ask_2" || id == "next_month_ask_1" || id == "previous_month" || id == "month_after" || id == "month_before" || id == "vocab_after") return "month";
+            if (id == "current_weekday" || id == "tomorrow_weekday" || id == "yesterday_weekday" || id == "weekday_after" || id == "weekday_before" || id == "vocab_before" || id == "explicit_when_doctor" || id == "explicit_when_party") return "weekday";
+            if (id.IndexOf("season_", StringComparison.Ordinal) == 0) return "season";
+            return null;
+        }
+
+        private static string ExpectedCalendarDescription(Mission mission)
+        {
+            var id = mission.VariantId ?? "";
+            var value = mission.ContentContext == null ? "" : mission.ContentContext.Value;
+            if (id == "current_month_ask_1" || id == "current_month_ask_2") return "el mes en el que estamos";
+            if (id == "next_month_ask_1") return "el mes que viene";
+            if (id == "previous_month") return "el mes pasado";
+            if (id == "month_after") return "el mes que sigue a " + value;
+            if (id == "month_before") return "el mes que está antes de " + value;
+            if (id == "vocab_after") return "el mes que está después de febrero";
+            if (id == "current_weekday") return "el día de la semana de hoy";
+            if (id == "tomorrow_weekday") return "el día de la semana de mañana";
+            if (id == "yesterday_weekday") return "el día de la semana de ayer";
+            if (id == "weekday_after") return "el día que sigue a " + value;
+            if (id == "weekday_before") return "el día que está antes de " + value;
+            if (id == "vocab_before") return "el día que está antes de miércoles";
+            if (id == "explicit_when_doctor") return "el día del turno";
+            if (id == "explicit_when_party") return "el día de la fiesta";
+            if (id == "season_cold") return "la estación en la que hace mucho frío";
+            if (id == "season_hot") return "la estación en la que hace mucho calor";
+            if (id == "season_falling_leaves") return "la estación en la que se caen muchas hojas";
+            if (id == "season_flowers") return "la estación en la que suelen crecer muchas flores";
+            if (id == "season_after") return "la estación que sigue a " + value;
+            return "la respuesta de la pregunta";
+        }
 
         // Prompts is the runtime source for every comprehension VariantId. Dynamic {0} values are supplied by MissionSystem.
         private static readonly Dictionary<string, string> Prompts = new Dictionary<string, string> {

@@ -40,6 +40,17 @@ namespace Guardian
         public string Text { get; set; }
     }
 
+    // Resultado pedagógico previo al avance de ayudas. No forma parte de la
+    // validación de la respuesta correcta ni del corrector ortográfico.
+    public enum MissionFeedbackKind { None, NoAttempt, NumberRequired, Contextual }
+
+    public sealed class MissionFeedback
+    {
+        public MissionFeedbackKind Kind { get; set; }
+        public string Text { get; set; }
+        public string CandidateKey { get; set; }
+    }
+
     public sealed class PrivateMissionProfile
     {
         public string PreferredName { get; set; }
