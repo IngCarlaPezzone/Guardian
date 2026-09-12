@@ -303,7 +303,7 @@ def summarize(records: list[MissionRecord], category: str | None = None) -> dict
         counts["comprehension_help"] = counts["mission_help"]
         counts["orthographic_support"] = percentage_metric(records, lambda record: record.orthographic_support, lambda value: value)
         counts["writing_distribution"] = distribution(records, lambda record: record.writing_max_level, {"none": "Sin apoyo ortográfico", "level_1": "Nivel 1", "level_2": "Nivel 2", "revealed": "Respuesta escrita revelada"})
-        counts["feedback_distribution"] = feedback_support_distribution(records)
+        counts["help_distribution"] += feedback_support_distribution(records)
     counts["median_seconds"] = round(median(durations), 1) if durations else None
     return counts
 

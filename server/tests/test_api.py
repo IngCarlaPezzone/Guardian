@@ -1024,10 +1024,8 @@ def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
         data = dashboard_data(db, db.get(Device, device_id), "all", None, None, "comprehension", "functional_1", "temporal_relations")
     assert data["summary"]["comprehension_help"] == {"numerator": 1, "valid_missions": 2, "percentage": 50.0}
     assert data["summary"]["orthographic_support"] == {"numerator": 1, "valid_missions": 2, "percentage": 50.0}
-    assert data["summary"]["feedback_distribution"] == [
-        {"label": "Ayuda personalizada", "missions": 1, "percentage": 33.3},
-        {"label": "No intento", "missions": 0, "percentage": 0.0},
-    ]
+    assert next(row for row in data["summary"]["help_distribution"] if row["label"] == "Ayuda personalizada") == {"label": "Ayuda personalizada", "missions": 1, "percentage": 33.3}
+    assert next(row for row in data["summary"]["help_distribution"] if row["label"] == "No intento") == {"label": "No intento", "missions": 0, "percentage": 0.0}
     assert next(row for row in data["summary"]["help_distribution"] if row["label"] == "Sin dato")["missions"] == 1
     assert data["rows"][0]["label"] == "¿Qué día fue ayer?"
     executions = data["executions_by_variant"]["yesterday_weekday"]
@@ -1041,7 +1039,8 @@ def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
     assert "Quisiste decir domingo. Domingo es un día de la semana, pero te pide el día de la semana de ayer." in response.text
     support_response = admin_client().get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1")
     assert support_response.status_code == 200
-    assert "Feedback de respuesta" in support_response.text
+    assert "Apoyo de comprensión" in support_response.text
+    assert "Ayuda personalizada" in support_response.text
     assert [item.get("answer") for item in help_execution["timeline"] if item["kind"] == "attempt"] == ["domingo", "domingo", "lunes"]
     writing_execution = next(item for item in executions if item["mission_id"] == "writing")
     assert writing_execution["question_text"] is None

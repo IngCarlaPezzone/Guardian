@@ -25,7 +25,7 @@ El mensaje contextual nombra la respuesta escrita, identifica si es un día de l
 
 ## Telemetría y privacidad
 
-Cada intervención standalone registra la respuesta como `MissionFailed` con un motivo pedagógico y registra `MissionFeedbackShown` con `feedback_kind` (`no_attempt`, `number_required` o `contextual`), el texto que se mostró y los metadatos no sensibles de la misión. En el caso contextual, ese texto sólo puede usar el vocabulario cerrado de días, meses y estaciones; no registra una respuesta libre. El detalle de conversación de Métricas muestra ambos eventos en orden; cuenta la respuesta como intento, pero no como ayuda de niveles 1 a 3.
+Cada intervención standalone registra la respuesta como `MissionFailed` con un motivo pedagógico y registra `MissionFeedbackShown` con `feedback_kind` (`no_attempt`, `number_required` o `contextual`), el texto que se mostró y los metadatos no sensibles de la misión. En el caso contextual, ese texto sólo puede usar el vocabulario cerrado de días, meses y estaciones; no registra una respuesta libre. El detalle de conversación de Métricas muestra ambos eventos en orden; cuenta la respuesta como intento, pero no como ayuda de niveles 1 a 3. En el resumen de Comprensión, `Ayuda personalizada` y `No intento` se muestran dentro de `Apoyo de comprensión` y pueden superponerse con las ayudas de nivel.
 
 ## Fuera de alcance
 
