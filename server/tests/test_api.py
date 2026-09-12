@@ -1041,6 +1041,7 @@ def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
     assert support_response.status_code == 200
     assert "Apoyo de comprensión" in support_response.text
     assert "Ayuda personalizada" in support_response.text
+    assert "Una misión puede incluir más de un tipo de apoyo." not in support_response.text
     assert [item.get("answer") for item in help_execution["timeline"] if item["kind"] == "attempt"] == ["domingo", "domingo", "lunes"]
     writing_execution = next(item for item in executions if item["mission_id"] == "writing")
     assert writing_execution["question_text"] is None

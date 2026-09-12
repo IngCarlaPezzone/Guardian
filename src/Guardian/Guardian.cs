@@ -2155,19 +2155,16 @@ namespace Guardian
                 Text = "",
                 Foreground = new SolidColorBrush(Color.FromRgb(153, 27, 27)),
                 FontSize = 16,
-                TextAlignment = TextAlignment.Center,
+                TextAlignment = TextAlignment.Left,
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(7, 0, 0, 0),
+                Width = 590,
                 MinHeight = 28
             };
             _feedbackIcon = CreateIcon("spelling.png", 24);
             _feedbackIcon.Visibility = Visibility.Collapsed;
-            var feedbackPanel = new Grid { Width = 640, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) };
-            feedbackPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            feedbackPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            Grid.SetColumn(_feedbackIcon, 0);
-            Grid.SetColumn(_feedback, 1);
+            var feedbackPanel = new StackPanel { Orientation = Orientation.Horizontal, MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) };
             feedbackPanel.Children.Add(_feedbackIcon);
             feedbackPanel.Children.Add(_feedback);
             panel.Children.Add(feedbackPanel);
