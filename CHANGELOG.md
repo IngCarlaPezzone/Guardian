@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.10 — Feedback adaptativo de respuestas
+
+- Agrega feedback standalone para no-intentos, respuestas numéricas esperadas y confusiones entre días, meses y estaciones, sin habilitar ayudas por tanteo repetido.
+- El detalle de Métricas incorpora cada respuesta y su feedback; `Apoyo de comprensión` incluye ayuda personalizada y no intento.
+- Mejora la presentación de los feedbacks largos dentro de la misión y mantiene los íconos correspondientes en Cliente y Admin.
+- Esta versión no incluye la POC de misión visual.
+
 ## 0.4.9 — Nuevas habilidades de Matemática y Comprensión
 
 - Agrega divisiones exactas en tres habilidades configurables y multiplicaciones por 10, 100 y 1000, sin ayudas en las operaciones directas.
