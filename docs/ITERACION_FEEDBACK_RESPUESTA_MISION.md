@@ -21,14 +21,14 @@ Los pasos 3 a 5 no incrementan el intento, no registran `MissionFailed`, no abre
 - **No-intento:** para Comprensión, una entrada vacía, de caracteres repetidos, una secuencia del teclado o sin vocales y sin forma de palabra muestra `LEÉ la pregunta y PENSÁ qué te está pidiendo. Vos podés.`
 - **Feedback contextual:** reconoce días de la semana, meses y estaciones incluso con una falta ortográfica leve. Una categoría equivocada muestra inmediatamente la lámpara. Una opción equivocada de la categoría correcta mantiene el primer error como intento genuino; recién una segunda opción distinta de la misma categoría muestra la lámpara.
 
-El mensaje contextual nombra la respuesta escrita y formula qué dato preciso pide la consigna, sin revelar la respuesta final.
+El mensaje contextual nombra la respuesta escrita y formula qué dato preciso pide la consigna, sin revelar la respuesta final. Si reconoce una falta ortográfica leve de una opción conocida, usa `Quisiste decir <opción>...` para mostrar la intención detectada.
 
 ## Telemetría y privacidad
 
-Cada intervención standalone registra `MissionFeedbackShown` con `feedback_kind` (`no_attempt`, `number_required` o `contextual`) y los metadatos no sensibles de la misión. No incluye la respuesta escrita ni altera la telemetría existente de errores, ortografía o ayudas.
+Cada intervención standalone registra `MissionFeedbackShown` con `feedback_kind` (`no_attempt`, `number_required` o `contextual`), el texto que se mostró y los metadatos no sensibles de la misión. En el caso contextual, ese texto sólo puede usar el vocabulario cerrado de días, meses y estaciones; no registra una respuesta libre. El detalle de conversación de Métricas muestra estos eventos en orden, sin contarlos como intento ni como ayuda de niveles 1 a 3.
 
 ## Fuera de alcance
 
 - Cambiar los textos o la estructura de las ayudas 1, 2 y 3.
 - Selección automática de habilidades según desempeño.
-- Nuevas preguntas, variantes, cambios de perfil o cambios de servidor/Admin.
+- Nuevas preguntas, variantes o cambios de perfil.

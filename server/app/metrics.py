@@ -56,7 +56,7 @@ QUESTION_LABELS = {
     "explicit_color_balloon": "Color del globo", "explicit_when_doctor": "Día del turno", "explicit_when_party": "Día de la fiesta", "explicit_owner_ball": "Quién tiene la pelota", "explicit_owner_book": "Quién tiene el libro", "explicit_location_cup": "Dónde está la taza", "explicit_location_ball": "Dónde está la pelota", "explicit_quantity_cats": "Cantidad de gatos", "explicit_quantity_pencils": "Cantidad de lápices", "explicit_action_nina": "Qué dibuja Nina", "explicit_action_mateo": "Qué come Mateo", "explicit_object_dog": "Dónde duerme el perro",
 }
 
-MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionHelpRequested", "MissionWritingHintShown", "MissionSolved"}
+MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionSolved"}
 
 
 def device_timezone(device: Device) -> tzinfo:
@@ -492,6 +492,14 @@ def execution_detail(record: MissionRecord, tz: tzinfo) -> dict:
             stage = integer_or_none(payload.get("writing_hint_stage")) if "writing_hint_stage" in payload else None
             writing_label = {1: "Apoyo de escritura", 2: "Segundo apoyo de escritura", 3: "Respuesta escrita revelada"}.get(stage, "Sin dato")
             timeline.append({"kind": "writing_help", "level": stage, "label": writing_label, "timestamp": event.occurred_at})
+        elif event.event_type == "MissionFeedbackShown":
+            feedback_kind = payload.get("feedback_kind")
+            fallback_label = {
+                "no_attempt": "LEÉ la pregunta y PENSÁ qué te está pidiendo. Vos podés.",
+                "number_required": "La respuesta es un NÚMERO.",
+                "contextual": "Revisá qué te pide la pregunta.",
+            }.get(feedback_kind, "Feedback mostrado")
+            timeline.append({"kind": "standalone_feedback", "feedback_kind": feedback_kind, "label": payload.get("feedback_text") or fallback_label, "timestamp": event.occurred_at})
     attempts = record.attempts
     help_text = "Sin dato" if record.max_help_level is None else help_label(record.max_help_level) or "Sin dato"
     return {

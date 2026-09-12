@@ -2375,6 +2375,9 @@ namespace Guardian
             _answerBox.SelectAll();
             var payload = TelemetryPayload();
             payload["feedback_kind"] = kind == MissionFeedbackKind.NoAttempt ? "no_attempt" : kind == MissionFeedbackKind.NumberRequired ? "number_required" : "contextual";
+            // Sólo se persiste el texto mostrado: los mensajes contextuales se generan
+            // exclusivamente con el vocabulario cerrado de días, meses y estaciones.
+            payload["feedback_text"] = text;
             _logger.Log("MissionFeedbackShown", payload);
         }
 
@@ -3422,6 +3425,9 @@ namespace Guardian
             feedbackCandidates.Add(firstSeason.CandidateKey);
             var secondSeason = MissionContent.FeedbackForWrongAnswer(seasonAfter, "otono", feedbackCandidates);
             if (secondSeason.Kind != MissionFeedbackKind.Contextual || secondSeason.Text.IndexOf("Pusiste otono", StringComparison.Ordinal) < 0 || secondSeason.Text.IndexOf("sigue a invierno", StringComparison.Ordinal) < 0) failures.Add("second distinct season must receive contextual feedback");
+            var spellingCandidates = new HashSet<string>(StringComparer.Ordinal) { "season:invierno" };
+            var spellingCandidate = MissionContent.FeedbackForWrongAnswer(seasonAfter, "verno", spellingCandidates);
+            if (spellingCandidate.Kind != MissionFeedbackKind.Contextual || spellingCandidate.Text.IndexOf("Quisiste decir verano", StringComparison.Ordinal) < 0) failures.Add("misspelled calendar candidate must name the recognized intention");
             var monthQuestion = new Mission { CategoryId = "comprehension", VariantId = "current_month_ask_1" };
             var categoryFeedback = MissionContent.FeedbackForWrongAnswer(monthQuestion, "lunes", new HashSet<string>(StringComparer.Ordinal));
             if (categoryFeedback.Kind != MissionFeedbackKind.Contextual || categoryFeedback.Text.IndexOf("Pusiste lunes", StringComparison.Ordinal) < 0 || categoryFeedback.Text.IndexOf("mes en el que estamos", StringComparison.Ordinal) < 0) failures.Add("weekday instead of month must receive contextual feedback");

@@ -40,15 +40,16 @@ namespace Guardian
 
             string category;
             string candidate;
-            if (!TryKnownCalendarCandidate(normalized, out category, out candidate)) return new MissionFeedback { Kind = MissionFeedbackKind.None };
+            bool candidateHasSpellingError;
+            if (!TryKnownCalendarCandidate(normalized, out category, out candidate, out candidateHasSpellingError)) return new MissionFeedback { Kind = MissionFeedbackKind.None };
 
             var candidateKey = category + ":" + MissionText.Normalize(candidate);
             var expectedCategory = ExpectedCalendarCategory(mission);
             if (expectedCategory == null || expectedCategory != category)
-                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
+                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, candidate, candidateHasSpellingError, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
 
             if (priorCandidates != null && !priorCandidates.Contains(candidateKey) && HasPriorCandidateInCategory(priorCandidates, category))
-                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
+                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, candidate, candidateHasSpellingError, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
 
             return new MissionFeedback { Kind = MissionFeedbackKind.None, CandidateKey = candidateKey };
         }
@@ -60,8 +61,9 @@ namespace Guardian
             return false;
         }
 
-        private static string ContextualText(string answer, string requested)
+        private static string ContextualText(string answer, string candidate, bool candidateHasSpellingError, string requested)
         {
+            if (candidateHasSpellingError) return "Quisiste decir " + candidate + ", pero te pide " + requested + ".";
             var written = (answer ?? "").Trim();
             return "Pusiste " + written + ", pero te pide " + requested + ".";
         }
@@ -80,24 +82,24 @@ namespace Guardian
 
         private static string Reverse(string value) { var chars = value.ToCharArray(); Array.Reverse(chars); return new string(chars); }
 
-        private static bool TryKnownCalendarCandidate(string normalized, out string category, out string candidate)
+        private static bool TryKnownCalendarCandidate(string normalized, out string category, out string candidate, out bool candidateHasSpellingError)
         {
-            category = null; candidate = null;
-            if (TryCandidate(normalized, Seasons, out candidate)) { category = "season"; return true; }
-            if (TryCandidate(normalized, Months, out candidate)) { category = "month"; return true; }
-            if (TryCandidate(normalized, Weekdays, out candidate)) { category = "weekday"; return true; }
+            category = null; candidate = null; candidateHasSpellingError = false;
+            if (TryCandidate(normalized, Seasons, out candidate, out candidateHasSpellingError)) { category = "season"; return true; }
+            if (TryCandidate(normalized, Months, out candidate, out candidateHasSpellingError)) { category = "month"; return true; }
+            if (TryCandidate(normalized, Weekdays, out candidate, out candidateHasSpellingError)) { category = "weekday"; return true; }
             return false;
         }
 
-        private static bool TryCandidate(string normalized, string[] values, out string candidate)
+        private static bool TryCandidate(string normalized, string[] values, out string candidate, out bool candidateHasSpellingError)
         {
-            candidate = null;
+            candidate = null; candidateHasSpellingError = false;
             foreach (var value in values)
             {
                 var expected = MissionText.Normalize(value);
                 if (normalized == expected) { candidate = value; return true; }
                 var limit = expected.Length <= 5 ? 1 : 2;
-                if (normalized.Length >= 3 && MissionValidator.DamerauLevenshtein(normalized, expected) <= limit) { candidate = value; return true; }
+                if (normalized.Length >= 3 && MissionValidator.DamerauLevenshtein(normalized, expected) <= limit) { candidate = value; candidateHasSpellingError = true; return true; }
             }
             return false;
         }

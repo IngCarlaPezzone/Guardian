@@ -84,7 +84,7 @@ def is_device_online(device: Device) -> bool:
 
 
 EVENT_GROUPS = {
-    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFailed", "MissionSolved"],
+    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionFailed", "MissionSolved"],
     "config": ["RemoteConfigFetched", "RemoteConfigReceived", "RemoteConfigApplied", "RemoteConfigFailed"],
     "updates": [
         "UpdateCommandReceived",
