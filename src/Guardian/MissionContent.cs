@@ -48,10 +48,10 @@ namespace Guardian
             if (priorCandidates != null && priorCandidates.Contains(candidateKey))
                 return new MissionFeedback { Kind = MissionFeedbackKind.NoAttempt, Text = NoAttemptFeedback, CandidateKey = candidateKey };
             if (expectedCategory == null || expectedCategory != category)
-                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, candidate, candidateHasSpellingError, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
+                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, candidate, category, candidateHasSpellingError, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
 
             if (priorCandidates != null && !priorCandidates.Contains(candidateKey) && HasPriorCandidateInCategory(priorCandidates, category))
-                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, candidate, candidateHasSpellingError, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
+                return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, candidate, category, candidateHasSpellingError, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
 
             return new MissionFeedback { Kind = MissionFeedbackKind.None, CandidateKey = candidateKey };
         }
@@ -63,11 +63,13 @@ namespace Guardian
             return false;
         }
 
-        private static string ContextualText(string answer, string candidate, bool candidateHasSpellingError, string requested)
+        private static string ContextualText(string answer, string candidate, string category, bool candidateHasSpellingError, string requested)
         {
-            if (candidateHasSpellingError) return "Quisiste decir " + candidate + ", pero te pide " + requested + ".";
+            var namedCandidate = char.ToUpper(candidate[0]) + candidate.Substring(1);
+            var categoryDescription = category == "weekday" ? "un día de la semana" : category == "month" ? "un mes del año" : "una estación del año";
+            if (candidateHasSpellingError) return "Quisiste decir " + candidate + ". " + namedCandidate + " es " + categoryDescription + ", pero te pide " + requested + ".";
             var written = (answer ?? "").Trim();
-            return "Pusiste " + written + ", pero te pide " + requested + ".";
+            return "Pusiste " + written + ". " + namedCandidate + " es " + categoryDescription + ", pero te pide " + requested + ".";
         }
 
         private static bool LooksLikeNoAttempt(string normalized)
@@ -120,6 +122,13 @@ namespace Guardian
             var id = mission.VariantId ?? "";
             var value = mission.ContentContext == null ? "" : mission.ContentContext.Value;
             if (id == "current_month_ask_1" || id == "current_month_ask_2") return "el mes en el que estamos";
+            if (id == "age_ask_1" || id == "age_ask_2" || id == "age_field") return "tu edad";
+            if (id == "birth_year_ask" || id == "birth_year_field") return "el año en el que naciste";
+            if (id == "birthday_ask") return "la fecha de tu cumpleaños";
+            if (id == "birth_date_ask") return "tu fecha de nacimiento";
+            if (id == "current_year_ask_1" || id == "current_year_ask_2") return "el año en el que estamos";
+            if (id == "current_day_of_month") return "el número del día del mes";
+            if (id == "current_full_date") return "la fecha de hoy";
             if (id == "next_month_ask_1") return "el mes que viene";
             if (id == "previous_month") return "el mes pasado";
             if (id == "month_after") return "el mes que sigue a " + value;
@@ -133,6 +142,9 @@ namespace Guardian
             if (id == "vocab_before") return "el día que está antes de miércoles";
             if (id == "explicit_when_doctor") return "el día del turno";
             if (id == "explicit_when_party") return "el día de la fiesta";
+            if (id == "location_city_ask_1" || id == "location_city_ask_2") return "una ciudad";
+            if (id == "location_province_ask_1" || id == "location_province_ask_2" || id == "location_city_to_province") return "una provincia";
+            if (id == "location_country_ask_1" || id == "location_country_ask_2" || id == "location_province_to_country" || id == "location_city_to_country") return "un país";
             if (id == "season_cold") return "la estación en la que hace mucho frío";
             if (id == "season_hot") return "la estación en la que hace mucho calor";
             if (id == "season_falling_leaves") return "la estación en la que se caen muchas hojas";

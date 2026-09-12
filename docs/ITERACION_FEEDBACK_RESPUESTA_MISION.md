@@ -21,7 +21,7 @@ Los pasos 3 a 5 registran la respuesta y cuentan como intento para reflejar la c
 - **No-intento:** para Comprensión, una entrada vacía, de caracteres repetidos, una secuencia del teclado, sin vocales y sin forma de palabra, o la repetición de una respuesta ya enviada muestra `LEÉ la pregunta y PENSÁ qué te está pidiendo. Vos podés.` Una misma opción de calendario escrita luego con una falta ortográfica leve también es repetición.
 - **Feedback contextual:** reconoce días de la semana, meses y estaciones incluso con una falta ortográfica leve. Una categoría equivocada muestra inmediatamente la lámpara. Una opción equivocada de la categoría correcta mantiene el primer error como intento genuino; recién una segunda opción distinta de la misma categoría muestra la lámpara.
 
-El mensaje contextual nombra la respuesta escrita y formula qué dato preciso pide la consigna, sin revelar la respuesta final. Si reconoce una falta ortográfica leve de una opción conocida, usa `Quisiste decir <opción>...` para mostrar la intención detectada.
+El mensaje contextual nombra la respuesta escrita, identifica si es un día de la semana, un mes del año o una estación del año, y formula qué dato preciso pide la consigna, sin revelar la respuesta final. Si reconoce una falta ortográfica leve de una opción conocida, usa `Quisiste decir <opción>...` para mostrar la intención detectada. También puede explicar esa categoría cuando la pregunta pide edad, año, fecha o una ubicación.
 
 ## Telemetría y privacidad
 

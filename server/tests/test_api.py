@@ -1009,7 +1009,7 @@ def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
             ("504", "MissionFailed", "help", 4, {**common, "mission_id": "help", "attempt": 1, "answer": "domingo", "failureReason": "wrong_answer", "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
             ("505", "MissionHelpRequested", "help", 5, {**common, "mission_id": "help", "attempt": 2, "help_level": 1, "max_help_level": 1, "help_requests_count": 1, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
             ("506", "MissionFailed", "help", 6, {**common, "mission_id": "help", "attempt": 2, "answer": "domingo", "failureReason": "contextual_feedback"}),
-            ("507", "MissionFeedbackShown", "help", 6.5, {**common, "mission_id": "help", "attempt": 2, "feedback_kind": "contextual", "feedback_text": "Quisiste decir domingo, pero te pide el día de la semana de ayer."}),
+            ("507", "MissionFeedbackShown", "help", 6.5, {**common, "mission_id": "help", "attempt": 2, "feedback_kind": "contextual", "feedback_text": "Quisiste decir domingo. Domingo es un día de la semana, pero te pide el día de la semana de ayer."}),
             ("508", "MissionSolved", "help", 7, {**common, "mission_id": "help", "attempt": 3, "answer": "lunes", "max_help_level": 1, "help_requests_count": 1, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
             ("509", "MissionStarted", "writing", 8, {**common, "mission_id": "writing", "attempt": 1, "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
             ("510", "MissionFailed", "writing", 9, {**common, "mission_id": "writing", "attempt": 1, "answer": "lundes", "failureReason": "orthographic_error", "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
@@ -1024,6 +1024,10 @@ def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
         data = dashboard_data(db, db.get(Device, device_id), "all", None, None, "comprehension", "functional_1", "temporal_relations")
     assert data["summary"]["comprehension_help"] == {"numerator": 1, "valid_missions": 2, "percentage": 50.0}
     assert data["summary"]["orthographic_support"] == {"numerator": 1, "valid_missions": 2, "percentage": 50.0}
+    assert data["summary"]["feedback_distribution"] == [
+        {"label": "Ayuda personalizada", "missions": 1, "percentage": 33.3},
+        {"label": "No intento", "missions": 0, "percentage": 0.0},
+    ]
     assert next(row for row in data["summary"]["help_distribution"] if row["label"] == "Sin dato")["missions"] == 1
     assert data["rows"][0]["label"] == "¿Qué día fue ayer?"
     executions = data["executions_by_variant"]["yesterday_weekday"]
@@ -1031,10 +1035,13 @@ def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
     assert help_execution["question_text"] == "Hoy es martes. ¿Qué día fue ayer?"
     assert [item["kind"] for item in help_execution["timeline"]] == ["attempt", "comprehension_help", "attempt", "standalone_feedback", "attempt"]
     assert help_execution["timeline"][2]["result"] == "Revisá la pregunta"
-    assert help_execution["timeline"][3]["label"] == "Quisiste decir domingo, pero te pide el día de la semana de ayer."
+    assert help_execution["timeline"][3]["label"] == "Quisiste decir domingo. Domingo es un día de la semana, pero te pide el día de la semana de ayer."
     response = admin_client().get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1&skill=temporal_relations")
     assert response.status_code == 200
-    assert "Quisiste decir domingo, pero te pide el día de la semana de ayer." in response.text
+    assert "Quisiste decir domingo. Domingo es un día de la semana, pero te pide el día de la semana de ayer." in response.text
+    support_response = admin_client().get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1")
+    assert support_response.status_code == 200
+    assert "Feedback de respuesta" in support_response.text
     assert [item.get("answer") for item in help_execution["timeline"] if item["kind"] == "attempt"] == ["domingo", "domingo", "lunes"]
     writing_execution = next(item for item in executions if item["mission_id"] == "writing")
     assert writing_execution["question_text"] is None

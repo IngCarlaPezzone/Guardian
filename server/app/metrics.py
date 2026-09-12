@@ -263,6 +263,15 @@ def percentage_metric(records: list[MissionRecord], value_getter, positive) -> d
     return {"numerator": numerator, "valid_missions": len(valid), "percentage": round(numerator * 100 / len(valid), 1) if valid else None}
 
 
+def feedback_support_distribution(records: list[MissionRecord]) -> list[dict]:
+    total = len(records)
+    rows = []
+    for kind, label in (("contextual", "Ayuda personalizada"), ("no_attempt", "No intento")):
+        missions = sum(1 for record in records if any(event.event_type == "MissionFeedbackShown" and (event.payload or {}).get("feedback_kind") == kind for event in record.events))
+        rows.append({"label": label, "missions": missions, "percentage": round(missions * 100 / total, 1) if total else None})
+    return rows
+
+
 def summarize(records: list[MissionRecord], category: str | None = None) -> dict:
     counts = {"missions": len(records), "first_attempt": 0, "second_attempt": 0, "third_plus": 0}
     durations = []
@@ -294,6 +303,7 @@ def summarize(records: list[MissionRecord], category: str | None = None) -> dict
         counts["comprehension_help"] = counts["mission_help"]
         counts["orthographic_support"] = percentage_metric(records, lambda record: record.orthographic_support, lambda value: value)
         counts["writing_distribution"] = distribution(records, lambda record: record.writing_max_level, {"none": "Sin apoyo ortográfico", "level_1": "Nivel 1", "level_2": "Nivel 2", "revealed": "Respuesta escrita revelada"})
+        counts["feedback_distribution"] = feedback_support_distribution(records)
     counts["median_seconds"] = round(median(durations), 1) if durations else None
     return counts
 
