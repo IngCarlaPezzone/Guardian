@@ -330,6 +330,11 @@ No asumir que:
 versión instalada == último release publicado
 ```
 
+Publicar o listar un release sólo lo deja disponible en ese entorno. Nunca debe crear
+una orden de actualización ni actualizar un dispositivo por sí solo: la selección de
+release y la actualización de cada dispositivo son acciones manuales y explícitas de
+Administración.
+
 El sistema debe soportar upgrade y downgrade cuando la especificación lo requiera.
 
 ## 16. Updater
@@ -601,6 +606,17 @@ Reglas no negociables:
 - STG usa sólo datos y perfiles ficticios; jamás se copia una DB, evento o perfil de PROD.
 - El dispositivo productivo final nunca es el primer dispositivo de validación y nunca se registra en STG.
 - Los scripts `*-stg.ps1` operan únicamente el proyecto Compose `guardian-stg`; no sustituirlos por scripts de PROD.
+- Cada instalación física usa un único `DeviceId` persistente por entorno. Para volver a
+  ejecutar un cliente en el mismo entorno se debe reutilizar su directorio de
+  configuración y su token; no se debe registrar otra instalación con el mismo rol por
+  usar un directorio de prueba nuevo.
+- El inventario operativo de PROD se mantiene deliberadamente acotado a los roles
+  autorizados: `PC TEST` y el dispositivo productivo final. Antes de iniciar un cliente
+  contra PROD, confirmar que su configuración corresponde a ese rol. Los registros
+  duplicados, de STG o de una POC nunca deben permanecer como dispositivos operativos
+  de PROD.
+- Borrar un dispositivo y su telemetría asociada es irreversible y requiere autorización
+  explícita, incluso si parece ser un duplicado.
 
 ### Versionado y promoción
 
@@ -609,6 +625,8 @@ Reglas no negociables:
 - Nunca usar una versión sin sufijo en STG salvo para reproducir explícitamente una versión PROD existente.
 - Al aprobar una feature en STG, crear una Release Candidate con la próxima versión de PROD: si PROD es `0.4.1`, usar `0.4.2-rc`. Probarla integralmente en STG, incluyendo updater cuando corresponda.
 - Si la RC aprueba, publicar `0.4.2` en PROD. Nunca publicar versiones `-staging-*` ni `-rc` en PROD.
+- En STG sólo se registran releases con sufijo de rama o `-rc`; nunca se listan allí releases normales de PROD como candidatas de actualización. En PROD sólo se registran versiones SemVer finales; nunca releases de STG ni RC.
+- Que un release figure como disponible no autoriza su instalación. La persona administradora elige manualmente qué versión instalar, en qué dispositivo y cuándo.
 - El rollout de PROD es obligatorio: **PC TEST → validar operación → dispositivo productivo final**.
 
 ### Importación sanitizada de telemetría

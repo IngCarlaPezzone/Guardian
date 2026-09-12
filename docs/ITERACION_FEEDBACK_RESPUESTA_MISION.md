@@ -27,6 +27,16 @@ El mensaje contextual nombra la respuesta escrita, identifica si es un día de l
 
 Cada intervención standalone registra la respuesta como `MissionFailed` con un motivo pedagógico y registra `MissionFeedbackShown` con `feedback_kind` (`no_attempt`, `number_required` o `contextual`), el texto que se mostró y los metadatos no sensibles de la misión. En el caso contextual, ese texto sólo puede usar el vocabulario cerrado de días, meses y estaciones; no registra una respuesta libre. El detalle de conversación de Métricas muestra ambos eventos en orden; cuenta la respuesta como intento, pero no como ayuda de niveles 1 a 3. En el resumen de Comprensión, `Ayuda personalizada` y `No intento` se muestran dentro de `Apoyo de comprensión` y pueden superponerse con las ayudas de nivel.
 
+## Alcance publicado
+
+La versión `0.4.10` incorpora esta iteración en Cliente, Server/Admin y Métricas. Sus
+íconos (`stop`, `just_number` y lámpara) se muestran en el mensaje de misión y en el
+detalle cronológico. La POC de misión visual no forma parte de esta versión.
+
+La validación de la feature se realiza con el flujo aislado de STG y, tras la promoción,
+de forma manual en `PC TEST` de PROD. Que la release aparezca disponible no actualiza
+ningún dispositivo: Administración decide y ejecuta cada actualización.
+
 ## Fuera de alcance
 
 - Cambiar los textos o la estructura de las ayudas 1, 2 y 3.

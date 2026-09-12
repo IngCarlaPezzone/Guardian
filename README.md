@@ -316,6 +316,22 @@ recién después actualizar el dispositivo real
 
 Guardian Admin no envía automáticamente releases a todos los dispositivos.
 
+Un release listado sólo está disponible para que Administración lo elija: la versión y
+el dispositivo de destino siempre se seleccionan manualmente. No se mezclan releases
+entre entornos: STG muestra únicamente releases de rama o RC; PROD, únicamente
+versiones finales SemVer.
+
+## Inventario de dispositivos por entorno
+
+Cada instalación conserva su `DeviceId` y token en su directorio de configuración. Al
+reiniciar una PC ya registrada hay que reutilizar ese directorio: iniciar la misma PC
+con un directorio nuevo crea un dispositivo distinto en el servidor.
+
+En PROD el inventario operativo se limita a `PC TEST` y al dispositivo productivo final.
+Antes de conectar una instalación a PROD, verificar que use la configuración del rol
+correspondiente. Los clientes de STG o de POC no deben apuntar a PROD. La eliminación de
+un dispositivo borra de forma irreversible su telemetría y datos asociados.
+
 ## Updater
 
 Guardian Updater es un ejecutable separado del cliente principal.

@@ -6,6 +6,7 @@
 - El detalle de Métricas incorpora cada respuesta y su feedback; `Apoyo de comprensión` incluye ayuda personalizada y no intento.
 - Mejora la presentación de los feedbacks largos dentro de la misión y mantiene los íconos correspondientes en Cliente y Admin.
 - Esta versión no incluye la POC de misión visual.
+- La release se valida en STG y se publica en PROD sin actualizar dispositivos automáticamente; cada actualización sigue siendo una decisión manual y comienza por PC TEST.
 
 ## 0.4.9 — Nuevas habilidades de Matemática y Comprensión
 
