@@ -481,7 +481,14 @@ def execution_detail(record: MissionRecord, tz: tzinfo) -> dict:
         attempt = integer_or_none(payload.get("attempt")) if "attempt" in payload else None
         if event.event_type == "MissionFailed":
             reason = payload.get("failureReason") if "failureReason" in payload else None
-            result = {"wrong_answer": "Incorrecta", "orthographic_error": "Error ortográfico", "invalid_input": "Respuesta inválida"}.get(reason, "Sin dato")
+            result = {
+                "wrong_answer": "Incorrecta",
+                "orthographic_error": "Error ortográfico",
+                "invalid_input": "Respuesta inválida",
+                "no_attempt": "No fue un intento",
+                "number_required": "La respuesta debe ser un número",
+                "contextual_feedback": "Revisá la pregunta",
+            }.get(reason, "Sin dato")
             timeline.append({"kind": "attempt", "attempt": attempt, "answer": payload.get("answer") if "answer" in payload else None, "result": result, "failure_reason": reason, "timestamp": event.occurred_at})
         elif event.event_type == "MissionSolved":
             timeline.append({"kind": "attempt", "attempt": attempt, "answer": payload.get("answer") if "answer" in payload else None, "result": "Correcta", "failure_reason": None, "timestamp": event.occurred_at})

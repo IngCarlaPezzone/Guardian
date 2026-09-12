@@ -45,6 +45,8 @@ namespace Guardian
 
             var candidateKey = category + ":" + MissionText.Normalize(candidate);
             var expectedCategory = ExpectedCalendarCategory(mission);
+            if (priorCandidates != null && priorCandidates.Contains(candidateKey))
+                return new MissionFeedback { Kind = MissionFeedbackKind.NoAttempt, Text = NoAttemptFeedback, CandidateKey = candidateKey };
             if (expectedCategory == null || expectedCategory != category)
                 return new MissionFeedback { Kind = MissionFeedbackKind.Contextual, Text = ContextualText(answer, candidate, candidateHasSpellingError, ExpectedCalendarDescription(mission)), CandidateKey = candidateKey };
 

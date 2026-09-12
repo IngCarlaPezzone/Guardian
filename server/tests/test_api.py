@@ -1008,12 +1008,13 @@ def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
             ("503", "MissionStarted", "help", 2, {**common, "mission_id": "help", "question_text": "Hoy es martes. ¿Qué día fue ayer?", "attempt": 1, "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
             ("504", "MissionFailed", "help", 4, {**common, "mission_id": "help", "attempt": 1, "answer": "domingo", "failureReason": "wrong_answer", "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
             ("505", "MissionHelpRequested", "help", 5, {**common, "mission_id": "help", "attempt": 2, "help_level": 1, "max_help_level": 1, "help_requests_count": 1, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
-            ("506", "MissionFeedbackShown", "help", 6, {**common, "mission_id": "help", "attempt": 2, "feedback_kind": "contextual", "feedback_text": "Quisiste decir domingo, pero te pide el día de la semana de ayer."}),
-            ("507", "MissionSolved", "help", 7, {**common, "mission_id": "help", "attempt": 2, "answer": "lunes", "max_help_level": 1, "help_requests_count": 1, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
-            ("508", "MissionStarted", "writing", 8, {**common, "mission_id": "writing", "attempt": 1, "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
-            ("509", "MissionFailed", "writing", 9, {**common, "mission_id": "writing", "attempt": 1, "answer": "lundes", "failureReason": "orthographic_error", "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
-            ("510", "MissionWritingHintShown", "writing", 10, {**common, "mission_id": "writing", "attempt": 1, "writing_hint_stage": 1, "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
-            ("511", "MissionSolved", "writing", 11, {**common, "mission_id": "writing", "attempt": 2, "answer": "lunes", "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
+            ("506", "MissionFailed", "help", 6, {**common, "mission_id": "help", "attempt": 2, "answer": "domingo", "failureReason": "contextual_feedback"}),
+            ("507", "MissionFeedbackShown", "help", 6.5, {**common, "mission_id": "help", "attempt": 2, "feedback_kind": "contextual", "feedback_text": "Quisiste decir domingo, pero te pide el día de la semana de ayer."}),
+            ("508", "MissionSolved", "help", 7, {**common, "mission_id": "help", "attempt": 3, "answer": "lunes", "max_help_level": 1, "help_requests_count": 1, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
+            ("509", "MissionStarted", "writing", 8, {**common, "mission_id": "writing", "attempt": 1, "max_help_level": 0, "had_orthographic_error": False, "writing_correction_count": 0, "writing_answer_revealed": False}),
+            ("510", "MissionFailed", "writing", 9, {**common, "mission_id": "writing", "attempt": 1, "answer": "lundes", "failureReason": "orthographic_error", "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
+            ("511", "MissionWritingHintShown", "writing", 10, {**common, "mission_id": "writing", "attempt": 1, "writing_hint_stage": 1, "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
+            ("512", "MissionSolved", "writing", 11, {**common, "mission_id": "writing", "attempt": 2, "answer": "lunes", "max_help_level": 0, "had_orthographic_error": True, "writing_correction_count": 1, "writing_answer_revealed": False}),
         ]
         for suffix, event_type, _, seconds, payload in items:
             db.add(DeviceEvent(event_id=f"50000000-0000-4000-8000-000000000{suffix}", device_id=device_id, occurred_at=base + timedelta(seconds=seconds), received_at=utcnow(), event_type=event_type, payload=payload))
@@ -1028,12 +1029,13 @@ def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():
     executions = data["executions_by_variant"]["yesterday_weekday"]
     help_execution = next(item for item in executions if item["mission_id"] == "help")
     assert help_execution["question_text"] == "Hoy es martes. ¿Qué día fue ayer?"
-    assert [item["kind"] for item in help_execution["timeline"]] == ["attempt", "comprehension_help", "standalone_feedback", "attempt"]
-    assert help_execution["timeline"][2]["label"] == "Quisiste decir domingo, pero te pide el día de la semana de ayer."
+    assert [item["kind"] for item in help_execution["timeline"]] == ["attempt", "comprehension_help", "attempt", "standalone_feedback", "attempt"]
+    assert help_execution["timeline"][2]["result"] == "Revisá la pregunta"
+    assert help_execution["timeline"][3]["label"] == "Quisiste decir domingo, pero te pide el día de la semana de ayer."
     response = admin_client().get(f"/admin/devices/{device_id}/metrics?period=all&category=comprehension&level=functional_1&skill=temporal_relations")
     assert response.status_code == 200
     assert "Quisiste decir domingo, pero te pide el día de la semana de ayer." in response.text
-    assert [item.get("answer") for item in help_execution["timeline"] if item["kind"] == "attempt"] == ["domingo", "lunes"]
+    assert [item.get("answer") for item in help_execution["timeline"] if item["kind"] == "attempt"] == ["domingo", "domingo", "lunes"]
     writing_execution = next(item for item in executions if item["mission_id"] == "writing")
     assert writing_execution["question_text"] is None
     assert writing_execution["question_label"] == "¿Qué día fue ayer?"

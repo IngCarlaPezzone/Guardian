@@ -2059,6 +2059,7 @@ namespace Guardian
         private bool _writingAnswerRevealed;
         private string _lastSemanticAnswer;
         private readonly HashSet<string> _calendarCandidates = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _submittedAnswerKeys = new HashSet<string>(StringComparer.Ordinal);
 
         public event Action UnlockRequested;
         public event Action AdminShutdownRequested;
@@ -2305,8 +2306,8 @@ namespace Guardian
             var result = analysis.Result;
             if (result == MissionAnswerResult.Invalid)
             {
-                if (string.Equals(_mission.CategoryId, "math", StringComparison.OrdinalIgnoreCase)) ShowStandaloneFeedback(MissionFeedbackKind.NumberRequired, MissionContent.NumberRequiredFeedback);
-                else ShowStandaloneFeedback(MissionFeedbackKind.NoAttempt, MissionContent.NoAttemptFeedback);
+                if (string.Equals(_mission.CategoryId, "math", StringComparison.OrdinalIgnoreCase)) ShowStandaloneFeedback(MissionFeedbackKind.NumberRequired, MissionContent.NumberRequiredFeedback, originalAnswer);
+                else ShowStandaloneFeedback(MissionFeedbackKind.NoAttempt, MissionContent.NoAttemptFeedback, originalAnswer);
                 return;
             }
 
@@ -2331,11 +2332,15 @@ namespace Guardian
 
             if (result == MissionAnswerResult.Wrong)
             {
-                var feedback = MissionContent.FeedbackForWrongAnswer(_mission, originalAnswer, _calendarCandidates);
+                var answerKey = MissionText.Normalize(originalAnswer);
+                var feedback = _submittedAnswerKeys.Contains(answerKey)
+                    ? new MissionFeedback { Kind = MissionFeedbackKind.NoAttempt, Text = MissionContent.NoAttemptFeedback }
+                    : MissionContent.FeedbackForWrongAnswer(_mission, originalAnswer, _calendarCandidates);
+                _submittedAnswerKeys.Add(answerKey);
                 if (feedback.CandidateKey != null) _calendarCandidates.Add(feedback.CandidateKey);
                 if (feedback.Kind != MissionFeedbackKind.None)
                 {
-                    ShowStandaloneFeedback(feedback.Kind, feedback.Text);
+                    ShowStandaloneFeedback(feedback.Kind, feedback.Text, originalAnswer);
                     return;
                 }
                 ClearInlineFeedback();
@@ -2363,7 +2368,7 @@ namespace Guardian
             RequestUnlock();
         }
 
-        private void ShowStandaloneFeedback(MissionFeedbackKind kind, string text)
+        private void ShowStandaloneFeedback(MissionFeedbackKind kind, string text, string answer)
         {
             _routine.Visibility = Visibility.Collapsed;
             _helpPanel.Visibility = Visibility.Collapsed;
@@ -2373,12 +2378,17 @@ namespace Guardian
             SetFeedbackIcon(kind == MissionFeedbackKind.Contextual ? "help-lightbulb.png" : kind == MissionFeedbackKind.NumberRequired ? "just_number.png" : "stop.png");
             _feedbackIcon.Visibility = Visibility.Visible;
             _answerBox.SelectAll();
+            var reason = kind == MissionFeedbackKind.NoAttempt ? "no_attempt" : kind == MissionFeedbackKind.NumberRequired ? "number_required" : "contextual_feedback";
+            var failedPayload = TelemetryPayload(answer, reason);
+            failedPayload["reason"] = reason;
+            _logger.Log("MissionFailed", failedPayload);
             var payload = TelemetryPayload();
             payload["feedback_kind"] = kind == MissionFeedbackKind.NoAttempt ? "no_attempt" : kind == MissionFeedbackKind.NumberRequired ? "number_required" : "contextual";
             // Sólo se persiste el texto mostrado: los mensajes contextuales se generan
             // exclusivamente con el vocabulario cerrado de días, meses y estaciones.
             payload["feedback_text"] = text;
             _logger.Log("MissionFeedbackShown", payload);
+            _attempt++;
         }
 
         private void ClearInlineFeedback()
@@ -3428,6 +3438,7 @@ namespace Guardian
             var spellingCandidates = new HashSet<string>(StringComparer.Ordinal) { "season:invierno" };
             var spellingCandidate = MissionContent.FeedbackForWrongAnswer(seasonAfter, "verno", spellingCandidates);
             if (spellingCandidate.Kind != MissionFeedbackKind.Contextual || spellingCandidate.Text.IndexOf("Quisiste decir verano", StringComparison.Ordinal) < 0) failures.Add("misspelled calendar candidate must name the recognized intention");
+            if (MissionContent.FeedbackForWrongAnswer(seasonAfter, "invirno", new HashSet<string>(StringComparer.Ordinal) { "season:invierno" }).Kind != MissionFeedbackKind.NoAttempt) failures.Add("misspelled repeat must not advance help");
             var monthQuestion = new Mission { CategoryId = "comprehension", VariantId = "current_month_ask_1" };
             var categoryFeedback = MissionContent.FeedbackForWrongAnswer(monthQuestion, "lunes", new HashSet<string>(StringComparer.Ordinal));
             if (categoryFeedback.Kind != MissionFeedbackKind.Contextual || categoryFeedback.Text.IndexOf("Pusiste lunes", StringComparison.Ordinal) < 0 || categoryFeedback.Text.IndexOf("mes en el que estamos", StringComparison.Ordinal) < 0) failures.Add("weekday instead of month must receive contextual feedback");
