@@ -2058,6 +2058,8 @@ namespace Guardian
         private int _writingCorrectionCount;
         private bool _writingAnswerRevealed;
         private string _lastSemanticAnswer;
+        private readonly HashSet<string> _calendarCandidates = new HashSet<string>(StringComparer.Ordinal);
+        private readonly HashSet<string> _submittedAnswerKeys = new HashSet<string>(StringComparer.Ordinal);
 
         public event Action UnlockRequested;
         public event Action AdminShutdownRequested;
@@ -2154,11 +2156,15 @@ namespace Guardian
                 Foreground = new SolidColorBrush(Color.FromRgb(153, 27, 27)),
                 FontSize = 16,
                 TextAlignment = TextAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(7, 0, 0, 0),
+                MaxWidth = 590,
                 MinHeight = 28
             };
             _feedbackIcon = CreateIcon("spelling.png", 24);
             _feedbackIcon.Visibility = Visibility.Collapsed;
-            var feedbackPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) };
+            var feedbackPanel = new StackPanel { Orientation = Orientation.Horizontal, MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 2) };
             feedbackPanel.Children.Add(_feedbackIcon);
             feedbackPanel.Children.Add(_feedback);
             panel.Children.Add(feedbackPanel);
@@ -2304,21 +2310,8 @@ namespace Guardian
             var result = analysis.Result;
             if (result == MissionAnswerResult.Invalid)
             {
-                _feedbackIcon.Visibility = Visibility.Collapsed;
-                var supportsHelp = _mission.CategoryId == "math" && _mission.LevelId == "word_problems_1" && _mission.HelpSteps != null && _mission.HelpSteps.Count > 0;
-                _feedback.Text = supportsHelp ? "La respuesta tiene que ser un n\u00famero." : "Revis\u00e1 la respuesta e intent\u00e1 de nuevo.";
-                var invalidPayload = TelemetryPayload(originalAnswer, "invalid_input");
-                invalidPayload["reason"] = "invalid_input";
-                _logger.Log("MissionFailed", invalidPayload);
-                if (supportsHelp)
-                {
-                    _lastSemanticAnswer = originalAnswer;
-                    _routine.Visibility = Visibility.Visible;
-                    _helpProgression.RegisterSemanticFailure();
-                    UpdateHelpButton();
-                    _answerBox.SelectAll();
-                }
-                _attempt++;
+                if (string.Equals(_mission.CategoryId, "math", StringComparison.OrdinalIgnoreCase)) ShowStandaloneFeedback(MissionFeedbackKind.NumberRequired, MissionContent.NumberRequiredFeedback, originalAnswer);
+                else ShowStandaloneFeedback(MissionFeedbackKind.NoAttempt, MissionContent.NoAttemptFeedback, originalAnswer);
                 return;
             }
 
@@ -2327,7 +2320,9 @@ namespace Guardian
                 _hadOrthographicError = true;
                 _writingCorrectionCount++;
                 var stage = _writingCorrectionCount >= 3 ? 3 : _writingCorrectionCount;
+                SetFeedbackIcon("spelling.png");
                 _feedbackIcon.Visibility = Visibility.Visible;
+                _feedback.Foreground = new SolidColorBrush(Color.FromRgb(153, 27, 27));
                 if (stage < 3) _feedback.Text = MissionContent.WritingFeedback(MissionValidator.DescribeDifference(_answerBox.Text, analysis.MatchedAcceptedAnswer));
                 else { _writingAnswerRevealed = true; _feedback.Text = MissionContent.WritingAnswerRevealed(analysis.MatchedAcceptedAnswer); }
                 _answerBox.SelectAll();
@@ -2341,8 +2336,19 @@ namespace Guardian
 
             if (result == MissionAnswerResult.Wrong)
             {
-                _feedbackIcon.Visibility = Visibility.Collapsed;
-                _feedback.Text = "";
+                var answerKey = MissionText.Normalize(originalAnswer);
+                var feedback = _submittedAnswerKeys.Contains(answerKey)
+                    ? new MissionFeedback { Kind = MissionFeedbackKind.NoAttempt, Text = MissionContent.NoAttemptFeedback }
+                    : MissionContent.FeedbackForWrongAnswer(_mission, originalAnswer, _calendarCandidates);
+                _submittedAnswerKeys.Add(answerKey);
+                if (feedback.CandidateKey != null) _calendarCandidates.Add(feedback.CandidateKey);
+                if (feedback.Kind != MissionFeedbackKind.None)
+                {
+                    ShowStandaloneFeedback(feedback.Kind, feedback.Text, originalAnswer);
+                    return;
+                }
+                ClearInlineFeedback();
+                _helpPanel.Visibility = Visibility.Visible;
                 _routine.Visibility = Visibility.Visible;
                 var failedPayload = TelemetryPayload(originalAnswer, "wrong_answer");
                 _lastSemanticAnswer = originalAnswer;
@@ -2364,6 +2370,50 @@ namespace Guardian
                 _logger.Log("ExitAvailable", TelemetryPayload());
             }
             RequestUnlock();
+        }
+
+        private void ShowStandaloneFeedback(MissionFeedbackKind kind, string text, string answer)
+        {
+            _routine.Visibility = Visibility.Collapsed;
+            _helpPanel.Visibility = Visibility.Collapsed;
+            _helpButton.Visibility = Visibility.Collapsed;
+            _feedback.Text = text;
+            _feedback.Foreground = new SolidColorBrush(kind == MissionFeedbackKind.Contextual ? Color.FromRgb(146, 64, 14) : Color.FromRgb(153, 27, 27));
+            SetFeedbackIcon(kind == MissionFeedbackKind.Contextual ? "help-lightbulb.png" : kind == MissionFeedbackKind.NumberRequired ? "just_number.png" : "stop.png");
+            _feedbackIcon.Visibility = Visibility.Visible;
+            _answerBox.SelectAll();
+            var reason = kind == MissionFeedbackKind.NoAttempt ? "no_attempt" : kind == MissionFeedbackKind.NumberRequired ? "number_required" : "contextual_feedback";
+            var failedPayload = TelemetryPayload(answer, reason);
+            failedPayload["reason"] = reason;
+            _logger.Log("MissionFailed", failedPayload);
+            var payload = TelemetryPayload();
+            payload["feedback_kind"] = kind == MissionFeedbackKind.NoAttempt ? "no_attempt" : kind == MissionFeedbackKind.NumberRequired ? "number_required" : "contextual";
+            // Sólo se persiste el texto mostrado: los mensajes contextuales se generan
+            // exclusivamente con el vocabulario cerrado de días, meses y estaciones.
+            payload["feedback_text"] = text;
+            _logger.Log("MissionFeedbackShown", payload);
+            _attempt++;
+        }
+
+        private void ClearInlineFeedback()
+        {
+            _feedback.Text = "";
+            _feedback.Foreground = new SolidColorBrush(Color.FromRgb(153, 27, 27));
+            _feedbackIcon.Visibility = Visibility.Collapsed;
+        }
+
+        private void SetFeedbackIcon(string iconName)
+        {
+            try
+            {
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Guardian.Assets.Icons." + iconName))
+                {
+                    if (stream == null) return;
+                    var source = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    _feedbackIcon.Source = source.Frames[0];
+                }
+            }
+            catch { }
         }
 
         private Dictionary<string, object> TelemetryPayload() { return MissionTelemetry.Payload(_mission, _attempt, _helpProgression.MaxHelpLevelUsed, _helpProgression.HelpRequestsCount, _hadOrthographicError, _writingCorrectionCount, _writingAnswerRevealed); }
@@ -3379,8 +3429,27 @@ namespace Guardian
             if (MissionContent.WritingFeedback(WritingDifference.TransposedLetters) != "Parece que dos letras están en otro orden. Leé cómo lo escribiste.") failures.Add("transposed letters writing text changed");
             if (MissionContent.WritingFeedback(WritingDifference.SubstitutedLetter) != "Parece que hay una letra que no va. Leé cómo lo escribiste.") failures.Add("substituted letter writing text changed");
             if (MissionContent.WritingFeedback(WritingDifference.Unknown) != "Leé cómo lo escribiste.") failures.Add("fallback writing text changed");
+            var feedbackCandidates = new HashSet<string>(StringComparer.Ordinal);
+            var seasonAfter = new Mission { CategoryId = "comprehension", VariantId = "season_after", ContentContext = new MissionContentContext { Value = "invierno" } };
+            var noiseFeedback = MissionContent.FeedbackForWrongAnswer(seasonAfter, "jhdk", feedbackCandidates);
+            if (noiseFeedback.Kind != MissionFeedbackKind.NoAttempt || noiseFeedback.Text != MissionContent.NoAttemptFeedback) failures.Add("non-word feedback must stop without using help");
+            if (MissionContent.FeedbackForWrongAnswer(seasonAfter, "asdf", feedbackCandidates).Kind != MissionFeedbackKind.NoAttempt) failures.Add("keyboard sequence must stop without using help");
+            var firstSeason = MissionContent.FeedbackForWrongAnswer(seasonAfter, "verano", feedbackCandidates);
+            if (firstSeason.Kind != MissionFeedbackKind.None || string.IsNullOrWhiteSpace(firstSeason.CandidateKey)) failures.Add("first wrong season must remain a legitimate attempt");
+            feedbackCandidates.Add(firstSeason.CandidateKey);
+            var secondSeason = MissionContent.FeedbackForWrongAnswer(seasonAfter, "otono", feedbackCandidates);
+            if (secondSeason.Kind != MissionFeedbackKind.Contextual || secondSeason.Text.IndexOf("Pusiste otono", StringComparison.Ordinal) < 0 || secondSeason.Text.IndexOf("estación del año", StringComparison.Ordinal) < 0 || secondSeason.Text.IndexOf("sigue a invierno", StringComparison.Ordinal) < 0) failures.Add("second distinct season must receive contextual feedback");
+            var spellingCandidates = new HashSet<string>(StringComparer.Ordinal) { "season:invierno" };
+            var spellingCandidate = MissionContent.FeedbackForWrongAnswer(seasonAfter, "verno", spellingCandidates);
+            if (spellingCandidate.Kind != MissionFeedbackKind.Contextual || spellingCandidate.Text.IndexOf("Quisiste decir verano", StringComparison.Ordinal) < 0) failures.Add("misspelled calendar candidate must name the recognized intention");
+            if (MissionContent.FeedbackForWrongAnswer(seasonAfter, "invirno", new HashSet<string>(StringComparer.Ordinal) { "season:invierno" }).Kind != MissionFeedbackKind.NoAttempt) failures.Add("misspelled repeat must not advance help");
+            var monthQuestion = new Mission { CategoryId = "comprehension", VariantId = "current_month_ask_1" };
+            var categoryFeedback = MissionContent.FeedbackForWrongAnswer(monthQuestion, "lunes", new HashSet<string>(StringComparer.Ordinal));
+            if (categoryFeedback.Kind != MissionFeedbackKind.Contextual || categoryFeedback.Text.IndexOf("Pusiste lunes", StringComparison.Ordinal) < 0 || categoryFeedback.Text.IndexOf("día de la semana", StringComparison.Ordinal) < 0 || categoryFeedback.Text.IndexOf("mes en el que estamos", StringComparison.Ordinal) < 0) failures.Add("weekday instead of month must receive contextual feedback");
+            var mathFeedback = MissionContent.FeedbackForWrongAnswer(mathSeven, "8", new HashSet<string>(StringComparer.Ordinal));
+            if (mathFeedback.Kind != MissionFeedbackKind.None) failures.Add("numeric math errors must remain legitimate attempts");
             var resources = new HashSet<string>(Assembly.GetExecutingAssembly().GetManifestResourceNames());
-            foreach (var icon in new[] { "look.png", "think.png", "write.png", "rephrase.png", "hint.png", "guided.png", "spelling.png" })
+            foreach (var icon in new[] { "look.png", "think.png", "write.png", "rephrase.png", "hint.png", "guided.png", "spelling.png", "help-lightbulb.png", "stop.png", "just_number.png" })
             {
                 if (!resources.Contains("Guardian.Assets.Icons." + icon)) failures.Add("embedded icon missing: " + icon);
             }

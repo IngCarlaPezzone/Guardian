@@ -56,7 +56,7 @@ QUESTION_LABELS = {
     "explicit_color_balloon": "Color del globo", "explicit_when_doctor": "Día del turno", "explicit_when_party": "Día de la fiesta", "explicit_owner_ball": "Quién tiene la pelota", "explicit_owner_book": "Quién tiene el libro", "explicit_location_cup": "Dónde está la taza", "explicit_location_ball": "Dónde está la pelota", "explicit_quantity_cats": "Cantidad de gatos", "explicit_quantity_pencils": "Cantidad de lápices", "explicit_action_nina": "Qué dibuja Nina", "explicit_action_mateo": "Qué come Mateo", "explicit_object_dog": "Dónde duerme el perro",
 }
 
-MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionHelpRequested", "MissionWritingHintShown", "MissionSolved"}
+MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionSolved"}
 
 
 def device_timezone(device: Device) -> tzinfo:
@@ -263,6 +263,15 @@ def percentage_metric(records: list[MissionRecord], value_getter, positive) -> d
     return {"numerator": numerator, "valid_missions": len(valid), "percentage": round(numerator * 100 / len(valid), 1) if valid else None}
 
 
+def feedback_support_distribution(records: list[MissionRecord]) -> list[dict]:
+    total = len(records)
+    rows = []
+    for kind, label in (("contextual", "Ayuda personalizada"), ("no_attempt", "No intento")):
+        missions = sum(1 for record in records if any(event.event_type == "MissionFeedbackShown" and (event.payload or {}).get("feedback_kind") == kind for event in record.events))
+        rows.append({"label": label, "missions": missions, "percentage": round(missions * 100 / total, 1) if total else None})
+    return rows
+
+
 def summarize(records: list[MissionRecord], category: str | None = None) -> dict:
     counts = {"missions": len(records), "first_attempt": 0, "second_attempt": 0, "third_plus": 0}
     durations = []
@@ -294,6 +303,7 @@ def summarize(records: list[MissionRecord], category: str | None = None) -> dict
         counts["comprehension_help"] = counts["mission_help"]
         counts["orthographic_support"] = percentage_metric(records, lambda record: record.orthographic_support, lambda value: value)
         counts["writing_distribution"] = distribution(records, lambda record: record.writing_max_level, {"none": "Sin apoyo ortográfico", "level_1": "Nivel 1", "level_2": "Nivel 2", "revealed": "Respuesta escrita revelada"})
+        counts["help_distribution"] += feedback_support_distribution(records)
     counts["median_seconds"] = round(median(durations), 1) if durations else None
     return counts
 
@@ -481,7 +491,14 @@ def execution_detail(record: MissionRecord, tz: tzinfo) -> dict:
         attempt = integer_or_none(payload.get("attempt")) if "attempt" in payload else None
         if event.event_type == "MissionFailed":
             reason = payload.get("failureReason") if "failureReason" in payload else None
-            result = {"wrong_answer": "Incorrecta", "orthographic_error": "Error ortográfico", "invalid_input": "Respuesta inválida"}.get(reason, "Sin dato")
+            result = {
+                "wrong_answer": "Incorrecta",
+                "orthographic_error": "Error ortográfico",
+                "invalid_input": "Respuesta inválida",
+                "no_attempt": "No fue un intento",
+                "number_required": "La respuesta debe ser un número",
+                "contextual_feedback": "Revisá la pregunta",
+            }.get(reason, "Sin dato")
             timeline.append({"kind": "attempt", "attempt": attempt, "answer": payload.get("answer") if "answer" in payload else None, "result": result, "failure_reason": reason, "timestamp": event.occurred_at})
         elif event.event_type == "MissionSolved":
             timeline.append({"kind": "attempt", "attempt": attempt, "answer": payload.get("answer") if "answer" in payload else None, "result": "Correcta", "failure_reason": None, "timestamp": event.occurred_at})
@@ -492,6 +509,14 @@ def execution_detail(record: MissionRecord, tz: tzinfo) -> dict:
             stage = integer_or_none(payload.get("writing_hint_stage")) if "writing_hint_stage" in payload else None
             writing_label = {1: "Apoyo de escritura", 2: "Segundo apoyo de escritura", 3: "Respuesta escrita revelada"}.get(stage, "Sin dato")
             timeline.append({"kind": "writing_help", "level": stage, "label": writing_label, "timestamp": event.occurred_at})
+        elif event.event_type == "MissionFeedbackShown":
+            feedback_kind = payload.get("feedback_kind")
+            fallback_label = {
+                "no_attempt": "LEÉ la pregunta y PENSÁ qué te está pidiendo. Vos podés.",
+                "number_required": "La respuesta es un NÚMERO.",
+                "contextual": "Revisá qué te pide la pregunta.",
+            }.get(feedback_kind, "Feedback mostrado")
+            timeline.append({"kind": "standalone_feedback", "feedback_kind": feedback_kind, "label": payload.get("feedback_text") or fallback_label, "timestamp": event.occurred_at})
     attempts = record.attempts
     help_text = "Sin dato" if record.max_help_level is None else help_label(record.max_help_level) or "Sin dato"
     return {
