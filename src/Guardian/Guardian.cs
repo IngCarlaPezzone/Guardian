@@ -48,6 +48,14 @@ namespace Guardian
                 {
                     return VisualStoryPreview.Run(command);
                 }
+                if (command.Has("--visual-story-interruption-preview"))
+                {
+                    if (string.IsNullOrWhiteSpace(requestedHome))
+                    {
+                        Environment.SetEnvironmentVariable("GUARDIAN_HOME", Path.Combine(Path.GetTempPath(), "Guardian-VisualStory-Interruption-Preview"), EnvironmentVariableTarget.Process);
+                    }
+                    return VisualStoryInterruptionPreview.Run();
+                }
                 if (command.Has("--install-startup"))
                 {
                     NativeConsole.Attach();
@@ -1118,7 +1126,7 @@ namespace Guardian
             }
             _missionUnavailableDeduplicator.ShouldLog(true, availabilitySignature);
             _missionActive = true;
-            _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger);
+            _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger, string.Equals(mission.CategoryId, VisualStoryDefinition.CategoryId, StringComparison.Ordinal));
             if (string.Equals(mission.CategoryId, VisualStoryDefinition.CategoryId, StringComparison.Ordinal))
             {
                 ShowVisualStory(mission, trigger);
@@ -1529,7 +1537,7 @@ namespace Guardian
             _muteScope = muteScope;
         }
 
-        public static MediaInterruptionSession Start(GuardianConfig config, EventLogger logger, string missionId, MissionTrigger trigger)
+        public static MediaInterruptionSession Start(GuardianConfig config, EventLogger logger, string missionId, MissionTrigger trigger, bool preserveVisualStoryAudio)
         {
             if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, trigger))
             {
@@ -1558,7 +1566,7 @@ namespace Guardian
             }
 
             SystemAudioMuteScope muteScope = null;
-            if (config.MuteSystemAudioDuringMission)
+            if (ShouldMuteSystemAudio(config, preserveVisualStoryAudio))
             {
                 try
                 {
@@ -1574,8 +1582,22 @@ namespace Guardian
                     });
                 }
             }
+            else if (config.MuteSystemAudioDuringMission && preserveVisualStoryAudio)
+            {
+                logger.Log("SystemAudioMuteSkipped", new Dictionary<string, object>
+                {
+                    { "missionId", missionId },
+                    { "reason", "visual_story_owns_narration" },
+                    { "audio_output", "default_multimedia_endpoint" }
+                });
+            }
 
             return new MediaInterruptionSession(config, logger, missionId, muteScope);
+        }
+
+        public static bool ShouldMuteSystemAudio(GuardianConfig config, bool preserveVisualStoryAudio)
+        {
+            return config != null && config.MuteSystemAudioDuringMission && !preserveVisualStoryAudio;
         }
 
         public void Dispose()
@@ -1702,6 +1724,23 @@ namespace Guardian
             Marshal.ReleaseComObject(device);
             Marshal.ReleaseComObject(enumerator);
             return (IAudioEndpointVolume)endpoint;
+        }
+
+        public static bool IsDefaultEndpointMuted()
+        {
+            IAudioEndpointVolume endpoint = null;
+            try
+            {
+                endpoint = GetDefaultEndpointVolume();
+                bool muted;
+                endpoint.GetMute(out muted);
+                return muted;
+            }
+            catch { return false; }
+            finally
+            {
+                if (endpoint != null) Marshal.ReleaseComObject(endpoint);
+            }
         }
     }
 
@@ -3570,6 +3609,9 @@ namespace Guardian
             if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, MissionTrigger.Timer)) failures.Add("unsafe media toggle must require explicit opt-in");
             config.AllowUnsafeMediaToggle = true;
             if (!MediaInterruptionPolicy.ShouldRequestPlayPause(config, MissionTrigger.Timer)) failures.Add("explicit unsafe media toggle should allow timer play/pause");
+            config.MuteSystemAudioDuringMission = true;
+            if (!MediaInterruptionSession.ShouldMuteSystemAudio(config, false)) failures.Add("ordinary missions must keep the configured system audio mute");
+            if (MediaInterruptionSession.ShouldMuteSystemAudio(config, true)) failures.Add("visual story narration must not be muted by the system audio scope");
         }
 
         private static void CheckUsageCounter(List<string> failures)

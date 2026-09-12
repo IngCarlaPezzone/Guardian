@@ -58,26 +58,62 @@ namespace Guardian
     {
         private SoundPlayer _player;
         private Stream _stream;
+        private readonly EventLogger _logger;
+        private readonly Mission _mission;
+        private bool _started;
+        private bool _completed;
+
+        // El WAV actual fue generado previamente con una voz local es-ES. La
+        // selección futura es intencionalmente separable: este equipo no tiene
+        // voz es-AR ni latinoamericana instalada para regenerarlo.
+        public VisualStoryNarrator(EventLogger logger, Mission mission)
+        {
+            _logger = logger;
+            _mission = mission;
+        }
+
+        public VisualStoryNarrator() : this(null, null) { }
 
         public void Start()
         {
-            Stop();
+            Stop("restart");
             try
             {
+                Log("VisualStoryAudioLoading", null);
                 _stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Guardian.Assets.Audio.donde-vivis.wav");
-                if (_stream == null) return;
+                if (_stream == null) throw new InvalidOperationException("embedded narration resource was not found");
                 _player = new SoundPlayer(_stream);
                 _player.Load();
                 _player.Play();
+                _started = true;
+                _completed = false;
+                var payload = new Dictionary<string, object>
+                {
+                    { "audio_resource", "Guardian.Assets.Audio.donde-vivis.wav" },
+                    { "audio_duration_seconds", 13.2 },
+                    { "narration_voice_locale", "es-ES" },
+                    { "audio_output", "default_multimedia_endpoint" },
+                    { "system_audio_muted", CoreAudio.IsDefaultEndpointMuted() }
+                };
+                Log("VisualStoryAudioStarted", payload);
             }
-            catch
+            catch (Exception ex)
             {
-                Stop();
+                Log("VisualStoryAudioFailed", new Dictionary<string, object> { { "message", ex.Message } });
+                Stop("playback_failure");
             }
         }
 
-        public void Stop()
+        public void MarkCompleted()
         {
+            if (!_started || _completed) return;
+            _completed = true;
+            Log("VisualStoryAudioCompleted", new Dictionary<string, object> { { "audio_duration_seconds", 13.2 } });
+        }
+
+        public void Stop(string reason)
+        {
+            if (_started && !_completed) Log("VisualStoryAudioStopped", new Dictionary<string, object> { { "reason", reason ?? "unknown" } });
             if (_player != null) try { _player.Stop(); }
             catch { }
             if (_player != null) try { _player.Dispose(); }
@@ -86,12 +122,23 @@ namespace Guardian
             catch { }
             _player = null;
             _stream = null;
+            _started = false;
         }
 
-        public void Dispose() { Stop(); }
+        private void Log(string eventType, Dictionary<string, object> extra)
+        {
+            if (_logger == null || _mission == null) return;
+            var payload = VisualStoryDefinition.Telemetry(_mission);
+            if (extra != null) foreach (var item in extra) payload[item.Key] = item.Value;
+            _logger.Log(eventType, payload);
+        }
+
+        public void Dispose() { Stop("dispose"); }
     }
 
-    public sealed class VisualStorySurface : FrameworkElement
+    // Conservado sólo como referencia de la primera POC. La experiencia en
+    // tiempo de ejecución usa AssetVisualStorySurface, con assets aprobados.
+    public sealed class LegacyVisualStorySurface : FrameworkElement
     {
         private double _position;
         private static readonly CultureInfo Culture = new CultureInfo("es-AR");
@@ -406,12 +453,114 @@ namespace Guardian
         }
     }
 
+    public sealed class AssetVisualStorySurface : FrameworkElement
+    {
+        private sealed class Scene
+        {
+            public string ResourceName;
+            public double Start;
+            public double End;
+            public Point FromFocus;
+            public Point ToFocus;
+            public double FromZoom;
+            public double ToZoom;
+        }
+
+        private static readonly Scene[] Scenes = {
+            new Scene { ResourceName = "Guardian.Assets.VisualStory.earth-south-america.png", Start = 0.0, End = 3.55, FromFocus = new Point(.41, .48), ToFocus = new Point(.46, .50), FromZoom = 1.00, ToZoom = 1.11 },
+            new Scene { ResourceName = "Guardian.Assets.VisualStory.argentina.png", Start = 2.85, End = 6.20, FromFocus = new Point(.42, .52), ToFocus = new Point(.47, .56), FromZoom = 1.01, ToZoom = 1.11 },
+            new Scene { ResourceName = "Guardian.Assets.VisualStory.neuquen.png", Start = 5.50, End = 9.00, FromFocus = new Point(.42, .48), ToFocus = new Point(.46, .53), FromZoom = 1.01, ToZoom = 1.10 },
+            new Scene { ResourceName = "Guardian.Assets.VisualStory.plottier.png", Start = 8.30, End = 11.35, FromFocus = new Point(.42, .47), ToFocus = new Point(.47, .50), FromZoom = 1.02, ToZoom = 1.10 },
+            new Scene { ResourceName = "Guardian.Assets.VisualStory.home.png", Start = 10.60, End = VisualStoryDefinition.DurationSeconds, FromFocus = new Point(.42, .47), ToFocus = new Point(.46, .49), FromZoom = 1.01, ToZoom = 1.08 }
+        };
+
+        private readonly Dictionary<string, BitmapSource> _images = new Dictionary<string, BitmapSource>();
+        private double _position;
+
+        public double PositionSeconds
+        {
+            get { return _position; }
+            set { _position = Math.Max(0, Math.Min(VisualStoryDefinition.DurationSeconds, value)); InvalidateVisual(); }
+        }
+
+        protected override void OnRender(DrawingContext dc)
+        {
+            base.OnRender(dc);
+            var width = Math.Max(1, ActualWidth);
+            var height = Math.Max(1, ActualHeight);
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(1, 8, 18)), null, new Rect(0, 0, width, height));
+            foreach (var scene in Scenes)
+            {
+                var alpha = SceneAlpha(_position, scene.Start, scene.End, .70, .72);
+                if (alpha <= 0) continue;
+                var image = ImageFor(scene.ResourceName);
+                if (image == null) continue;
+                dc.PushOpacity(alpha);
+                DrawMovingImage(dc, image, scene, width, height);
+                dc.Pop();
+            }
+            DrawVignette(dc, width, height);
+        }
+
+        private BitmapSource ImageFor(string resourceName)
+        {
+            BitmapSource image;
+            if (_images.TryGetValue(resourceName, out image)) return image;
+            try
+            {
+                using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
+                {
+                    if (stream == null) return null;
+                    var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+                    image = decoder.Frames[0];
+                    image.Freeze();
+                    _images[resourceName] = image;
+                    return image;
+                }
+            }
+            catch { return null; }
+        }
+
+        private void DrawMovingImage(DrawingContext dc, BitmapSource image, Scene scene, double width, double height)
+        {
+            var local = Ease(Cap((_position - scene.Start) / (scene.End - scene.Start)));
+            var focus = new Point(Lerp(scene.FromFocus.X, scene.ToFocus.X, local), Lerp(scene.FromFocus.Y, scene.ToFocus.Y, local));
+            var zoom = Lerp(scene.FromZoom, scene.ToZoom, local);
+            var baseScale = Math.Max(width / image.PixelWidth, height / image.PixelHeight) * zoom;
+            var drawWidth = image.PixelWidth * baseScale;
+            var drawHeight = image.PixelHeight * baseScale;
+            var left = Math.Min(0, Math.Max(width - drawWidth, width * .5 - focus.X * drawWidth));
+            var top = Math.Min(0, Math.Max(height - drawHeight, height * .5 - focus.Y * drawHeight));
+            dc.DrawImage(image, new Rect(left, top, drawWidth, drawHeight));
+        }
+
+        private static void DrawVignette(DrawingContext dc, double width, double height)
+        {
+            var vignette = new RadialGradientBrush(Color.FromArgb(0, 0, 0, 0), Color.FromArgb(105, 0, 4, 12));
+            vignette.Center = new Point(.5, .48); vignette.GradientOrigin = vignette.Center; vignette.RadiusX = .72; vignette.RadiusY = .76;
+            dc.DrawRectangle(vignette, null, new Rect(0, 0, width, height));
+        }
+
+        private static double SceneAlpha(double time, double start, double end, double fadeIn, double fadeOut)
+        {
+            if (time < start || time > end) return 0;
+            var alpha = 1.0;
+            if (time < start + fadeIn) alpha *= Ease((time - start) / fadeIn);
+            if (time > end - fadeOut) alpha *= Ease((end - time) / fadeOut);
+            return Cap(alpha);
+        }
+
+        private static double Cap(double value) { return Math.Max(0, Math.Min(1, value)); }
+        private static double Ease(double value) { value = Cap(value); return value * value * (3 - 2 * value); }
+        private static double Lerp(double from, double to, double amount) { return from + (to - from) * amount; }
+    }
+
     public sealed class VisualStoryWindow : Window
     {
         private readonly Mission _mission;
         private readonly GuardianConfig _config;
         private readonly EventLogger _logger;
-        private readonly VisualStorySurface _surface;
+        private readonly AssetVisualStorySurface _surface;
         private readonly Button _exitButton;
         private readonly Grid _adminOverlay;
         private readonly TextBox _adminUserBox;
@@ -419,7 +568,7 @@ namespace Guardian
         private readonly TextBlock _adminFeedback;
         private readonly DispatcherTimer _timer;
         private readonly Stopwatch _clock = new Stopwatch();
-        private readonly VisualStoryNarrator _narrator = new VisualStoryNarrator();
+        private readonly VisualStoryNarrator _narrator;
         private bool _completed;
         private bool _unlockRequested;
 
@@ -430,11 +579,12 @@ namespace Guardian
         public VisualStoryWindow(Mission mission, GuardianConfig config, EventLogger logger)
         {
             _mission = mission; _config = config; _logger = logger;
+            _narrator = new VisualStoryNarrator(logger, mission);
             Title = "Guardian — " + VisualStoryDefinition.Title;
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; WindowState = WindowState.Maximized;
             Topmost = true; ShowInTaskbar = true; Background = Brushes.Black; Foreground = Brushes.White;
             var root = new Grid();
-            _surface = new VisualStorySurface(); root.Children.Add(_surface);
+            _surface = new AssetVisualStorySurface(); root.Children.Add(_surface);
 
             _exitButton = MakeButton("SALIR", 108, 42);
             _exitButton.HorizontalAlignment = HorizontalAlignment.Right; _exitButton.VerticalAlignment = VerticalAlignment.Top;
@@ -483,7 +633,7 @@ namespace Guardian
             _surface.PositionSeconds = _clock.Elapsed.TotalSeconds;
             if (!_completed && _clock.Elapsed.TotalSeconds >= VisualStoryDefinition.DurationSeconds)
             {
-                _completed = true; _timer.Stop(); _narrator.Stop(); _exitButton.Visibility = Visibility.Visible;
+                _completed = true; _timer.Stop(); _narrator.MarkCompleted(); _narrator.Stop("story_completed"); _exitButton.Visibility = Visibility.Visible;
                 if (StoryCompleted != null) StoryCompleted();
             }
         }
@@ -533,7 +683,7 @@ namespace Guardian
             if (!string.IsNullOrWhiteSpace(captureDirectory))
             {
                 var window = new Window { Width = 1280, Height = 720, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false, Left = -2000, Top = 0 };
-                var surface = new VisualStorySurface(); window.Content = surface;
+                var surface = new AssetVisualStorySurface(); window.Content = surface;
                 window.Loaded += delegate
                 {
                     try { CaptureFrames(surface, captureDirectory); app.Shutdown(0); }
@@ -545,7 +695,7 @@ namespace Guardian
             var preview = new VisualStoryPreviewWindow(); app.MainWindow = preview; preview.Show(); return app.Run();
         }
 
-        private static void CaptureFrames(VisualStorySurface surface, string directory)
+        private static void CaptureFrames(AssetVisualStorySurface surface, string directory)
         {
             Directory.CreateDirectory(directory);
             var frames = new Dictionary<string, double>
@@ -566,9 +716,33 @@ namespace Guardian
         }
     }
 
+    // Diagnóstico local: reproduce la misma sesión de interrupción que usa
+    // Guardian, incluido el mute configurado, sin requerir timer ni servidor.
+    public static class VisualStoryInterruptionPreview
+    {
+        public static int Run()
+        {
+            var config = GuardianConfig.Default();
+            config.MuteSystemAudioDuringMission = true;
+            config.PauseMediaOnMission = false;
+            var logger = new EventLogger(config);
+            var mission = VisualStoryDefinition.CreateMission();
+            var media = MediaInterruptionSession.Start(config, logger, mission.Id, MissionTrigger.Manual, true);
+            logger.Log("VisualStoryInterruptionPreviewStarted", VisualStoryDefinition.Telemetry(mission));
+            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            var window = new VisualStoryWindow(mission, config, logger);
+            window.UnlockRequested += delegate { media.Dispose(); app.Shutdown(0); };
+            window.AdminShutdownRequested += delegate { media.Dispose(); app.Shutdown(0); };
+            window.Closed += delegate { media.Dispose(); };
+            app.MainWindow = window;
+            window.Show();
+            return app.Run();
+        }
+    }
+
     public sealed class VisualStoryPreviewWindow : Window
     {
-        private readonly VisualStorySurface _surface = new VisualStorySurface();
+        private readonly AssetVisualStorySurface _surface = new AssetVisualStorySurface();
         private readonly DispatcherTimer _timer;
         private readonly Stopwatch _clock = new Stopwatch();
         private readonly Slider _slider;
@@ -598,7 +772,7 @@ namespace Guardian
         {
             _surface.PositionSeconds = 0; _clock.Restart(); _playing = true; _timer.Start(); _narrator.Start(); UpdateTime();
         }
-        private void Pause() { _playing = false; _timer.Stop(); _narrator.Stop(); }
+        private void Pause() { _playing = false; _timer.Stop(); _narrator.Stop("preview_paused"); }
         private void Advance()
         {
             if (!_playing) return;
