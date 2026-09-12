@@ -2155,11 +2155,11 @@ namespace Guardian
                 Text = "",
                 Foreground = new SolidColorBrush(Color.FromRgb(153, 27, 27)),
                 FontSize = 16,
-                TextAlignment = TextAlignment.Left,
+                TextAlignment = TextAlignment.Center,
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(7, 0, 0, 0),
-                Width = 590,
+                MaxWidth = 590,
                 MinHeight = 28
             };
             _feedbackIcon = CreateIcon("spelling.png", 24);
