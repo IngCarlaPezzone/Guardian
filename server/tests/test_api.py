@@ -665,7 +665,7 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     assert "Ubicación personal" in page.text
     assert "Información explícita en una oración" in page.text
     assert "Visual Story" in page.text
-    assert "Dónde vivís" in page.text
+    assert "Multiplicar por 10, 100 y 1000" in page.text
     assert "aria-label" in page.text
     assert page.text.count("<h3>Matemática</h3>") == 1
     assert page.text.count("<h3>Comprensión</h3>") == 1
@@ -719,19 +719,19 @@ def test_visual_story_can_be_the_only_enabled_mission_and_reaches_remote_config(
 
     response = client.post(f"/admin/devices/{device_id}/config", data={
         "display_name": "Visual Story Test", "interval_minutes": "2", "missions_submitted": "1",
-        "enabled_skills": ["visual_story.location.home"],
+        "enabled_skills": ["visual_story.math.multiply_by_10_100_1000"],
     }, follow_redirects=False)
     assert response.status_code == 303
 
     remote = client.get(f"/api/v1/devices/{device_id}/config", headers={"Authorization": f"Bearer {token}"})
     assert remote.status_code == 200
     assert remote.json()["interval_seconds"] == 120
-    assert remote.json()["mission_config"]["EnabledSkills"] == ["visual_story.location.home"]
+    assert remote.json()["mission_config"]["EnabledSkills"] == ["visual_story.math.multiply_by_10_100_1000"]
 
     with SessionLocal() as db:
         config = db.query(DeviceConfiguration).filter(DeviceConfiguration.device_id == device_id).one()
         assert config.version == 4
-        assert config.mission_config == {"enabledSkills": ["visual_story.location.home"]}
+        assert config.mission_config == {"enabledSkills": ["visual_story.math.multiply_by_10_100_1000"]}
 
 
 def test_configuration_update_controls_are_stable_and_reuse_update_command_flow():

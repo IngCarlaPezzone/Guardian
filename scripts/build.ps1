@@ -10,6 +10,7 @@ $src = Join-Path $root "src\Guardian\Guardian.cs"
 $missionSrc = Join-Path $root "src\Guardian\MissionSystem.cs"
 $missionContentSrc = Join-Path $root "src\Guardian\MissionContent.cs"
 $visualStorySrc = Join-Path $root "src\Guardian\VisualStory.cs"
+$multiplyStorySrc = Join-Path $root "src\Guardian\MultiplyBy100Story.cs"
 $installPathsSrc = Join-Path $root "src\Guardian\GuardianInstallPaths.cs"
 $iconResources = @(Get-ChildItem (Join-Path $root "src\Guardian\Assets\Icons") -Filter "*.png" | ForEach-Object { "/resource:$($_.FullName),Guardian.Assets.Icons.$($_.Name)" })
 $audioResources = @(Get-ChildItem (Join-Path $root "src\Guardian\Assets\Audio") -Filter "*.wav" | ForEach-Object { "/resource:$($_.FullName),Guardian.Assets.Audio.$($_.Name)" })
@@ -61,6 +62,7 @@ Set-Content -Encoding UTF8 -Path $updaterVersionSrc -Value "namespace GuardianUp
   $missionSrc `
   $missionContentSrc `
   $visualStorySrc `
+  $multiplyStorySrc `
   $installPathsSrc `
   $guardianVersionSrc `
   $iconResources `
@@ -75,6 +77,9 @@ Copy-Item -Force (Join-Path $root "src\Guardian\App.config") "$out.config"
 $assetOutputDir = Join-Path $outDir "Assets\Icons"
 New-Item -ItemType Directory -Force -Path $assetOutputDir | Out-Null
 Copy-Item -Force (Join-Path $root "src\Guardian\Assets\Icons\*.png") $assetOutputDir
+$audioOutputDir = Join-Path $outDir "Assets\Audio"
+New-Item -ItemType Directory -Force -Path $audioOutputDir | Out-Null
+Copy-Item -Force (Join-Path $root "src\Guardian\Assets\Audio\multiply-by-10-100-1000.mp3") $audioOutputDir
 & $csc `
   /nologo `
   /target:winexe `

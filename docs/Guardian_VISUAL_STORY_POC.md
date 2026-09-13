@@ -1,47 +1,57 @@
-# Guardian — POC Visual Story “Dónde vivís”
+# Guardian — Visual Story: potencias de diez
 
-## Objetivo y alcance
+## Alcance actual
 
-Esta POC agrega una única experiencia visual no interactiva al flujo de misiones existente. Su objetivo es validar el disparo como misión y la calidad visual de un recorrido de 13,6 segundos:
+La única Visual Story de esta POC es una microanimación no interactiva sobre la
+multiplicación de `23` por `10`, `100` y `1000`. Reutiliza el selector de
+misiones, RemoteConfig, intervalo/test interval, bloqueo, pausa de multimedia
+externa, telemetría y salida de Guardian. Matemática y Comprensión no cambian.
 
-```text
-Tierra → América del Sur → Argentina → Neuquén → Plottier → hogar
-```
+- Skill: `visual_story.math.multiply_by_10_100_1000`
+- Categoría / nivel: `visual_story` / `math_primer`
+- Audio: `src/Guardian/Assets/Audio/multiply-by-10-100-1000.mp3`
+- Renderer: WPF nativo; no hay navegador, mapa, TTS ni servicio externo en
+  tiempo de ejecución.
 
-Quedan fuera de alcance templates genéricos, generación automática, IA, múltiples temáticas, geolocalización real y cambios de arquitectura.
+El audio original se conserva sin recortar ni alterar. `MediaPlayer` obtiene su
+duración real al abrirlo y la línea de tiempo visual toma ese valor, más un hold
+final de 0,85 segundos. Los segmentos son proporcionales al audio: apertura
+0–18 %, descubrimiento 18–48 %, ejemplos ×10 / ×100 / ×1000 48–60 % /
+60–72 % / 72–84 %, y pregunta final 84–100 %. El evento
+`VisualStoryAudioStarted` registra `audio_duration_seconds` con el valor real.
 
-## Integración
+## Guardian Visual Language
 
-- Skill remota: `visual_story.location.home`.
-- Categoría de telemetría: `visual_story`.
-- Nivel: `location`.
-- Variante única: `where_you_live_plottier`.
-- Usa el selector, la rotación, el intervalo/test interval, el bloqueo, RemoteConfig y la cola local-first existentes.
-- Admin permite dejar activa solamente **Visual Story → Microhistoria → Dónde vivís**.
-- Durante la reproducción no hay respuesta ni interacción de misión.
-- La salida aparece al finalizar. La salida admin de emergencia se conserva.
-- La casa usa una ubicación visual aproximada y conceptual; no se guarda ni representa un domicilio real.
+`docs/GUARDIAN_VISUAL_LANGUAGE_v2.md` es la fuente de verdad. Cada dígito y
+signo se carga individualmente desde `src/Guardian/Assets/Icons/`:
 
-La experiencia usa cinco PNG aprobados y embebidos como recursos WPF offline: Tierra/América del Sur, Argentina, Neuquén, llegada a Plottier y hogar. El montaje mantiene zoom y pan lentos en cada asset, con solapes de aproximadamente 0,7 segundos entre escenas; no usa mapas vectoriales ni genera imágenes nuevas.
+- `guardian-number-0.png` a `guardian-number-9.png`;
+- `guardian-sign-multiply.png`, `guardian-sign-equals.png` y
+  `guardian-sign-question.png`;
+- `hint.png` y `think.png` como apoyo narrativo.
 
-La narración se distribuye como WAV embebido. No hay TTS en tiempo de ejecución. Al validar esta iteración, el sistema sólo reportó voces `es-ES`; no había `es-AR` ni una voz latinoamericana instalada. El WAV existente queda como fallback temporal y debe reemplazarse cuando exista una voz local rioplatense/latinoamericana adecuada o se apruebe un proveedor futuro.
+Los PNG no se recolorean ni se convierten en una ecuación única. Los ceros
+viajan por curvas Bézier como los mismos objetos que pertenecían a cada
+multiplicador y aterrizan detrás de `23` con glow, squash y settle.
 
-## Audio durante la interrupción
+## Aprendizaje de la POC geográfica
 
-La ausencia de audio en la interrupción real tenía una causa concreta: `MediaInterruptionSession` silenciaba el endpoint global de Windows antes de crear la Visual Story. El preview aislado no crea esa sesión, por eso sí sonaba.
+La exploración geográfica basada en imágenes y zoom/crossfade validó la
+integración de Visual Story, pero su montaje se percibía como una presentación.
+El prototipo Cesium no ofreció, dentro del alcance acotado, una dirección
+artística aceptable y añadía dependencias de cartografía/red. Su código y sus
+dependencias específicas no forman parte de esta rama. Se conservó únicamente
+la infraestructura de misión, preview, audio y diagnóstico que sí aporta a la
+POC actual.
 
-La corrección conserva la pausa multimedia externa y el mute global para las misiones normales. Sólo cuando la misión es `visual_story` se registra `SystemAudioMuteSkipped` y se preserva el audio propio de la narración.
+## Audio durante una interrupción
 
-## Telemetría
-
-Además de `MissionStarted` y los eventos de bloqueo existentes, se registran:
-
-- `VisualStoryStarted` al abrir la experiencia;
-- `VisualStoryCompleted` cuando termina la línea de tiempo visual.
-
-Ambos incluyen los identificadores de misión/categoría/nivel/skill/variante y la duración prevista. No incluyen ubicación privada.
-
-Para diagnóstico DEV se suman `VisualStoryAudioLoading`, `VisualStoryAudioStarted`, `VisualStoryAudioCompleted`, `VisualStoryAudioStopped` y `VisualStoryAudioFailed`. Incluyen el recurso, duración, locale de la narración, salida multimedia por defecto y el estado de mute del sistema.
+`MediaInterruptionSession` sigue pausando multimedia externa. Para una misión
+`visual_story` evita silenciar el endpoint global de Windows y deja registrado
+`SystemAudioMuteSkipped`; así la narración propia puede escucharse. Los eventos
+de diagnóstico son `VisualStoryAudioLoading`, `VisualStoryAudioStarted`,
+`VisualStoryAudioCompleted`, `VisualStoryAudioStopped` y
+`VisualStoryAudioFailed`.
 
 ## Preview y capturas
 
@@ -51,56 +61,38 @@ Después de compilar:
 .\scripts\preview-visual-story.ps1
 ```
 
-El preview reproduce automáticamente narración y animación. **REINICIAR** vuelve al inicio y la línea de tiempo permite pausar e inspeccionar cualquier instante.
+El preview usa exactamente `MultiplyBy100StorySurface`, el mismo renderer de la
+interrupción. Reproduce automáticamente; **REINICIAR** vuelve a comenzar y la
+línea de tiempo permite scrub/inspección.
 
-Para regenerar los cinco fotogramas representativos:
+Para las capturas deterministas:
 
 ```powershell
-.\scripts\preview-visual-story.ps1 -Capture
+.\scripts\preview-visual-story.ps1 -Capture -OutputDirectory .\docs\assets\visual-story-powers-of-ten
 ```
 
-Se escriben en `docs/assets/visual-story-poc/` y corresponden a Tierra/América del Sur, Argentina, Neuquén, llegada a Plottier y hogar.
+Se generan apertura, regla con hint, viaje ×10, resultados ×100 y ×1000 y
+cierre con think/pregunta. No son assets de producción.
 
-Para reproducir específicamente el camino que antes fallaba —sesión de interrupción con `MuteSystemAudioDuringMission=true`— sin servidor ni timer:
+Para reproducir el flujo de audio y mute de una interrupción sin timer ni
+servidor:
 
 ```powershell
 .\dist\Guardian.exe --visual-story-interruption-preview
 ```
 
-Ese comando usa un directorio temporal aislado cuando no se pasa `--home`.
+## Validación STG manual
 
-## Validación en PC TEST de STG
+No ejecutar en PROD ni en un dispositivo productivo.
 
-No ejecutar estos pasos sobre PROD ni sobre el dispositivo productivo final.
-
-1. Desde esta feature branch, ejecutar:
-
-   ```powershell
-   .\scripts\build.ps1
-   .\scripts\self-test.ps1
-   & .\.venv\Scripts\python.exe -m pytest server\tests
-   ```
-
-2. Con `.env.stg` configurado con secretos exclusivamente STG, actualizar sólo STG:
-
-   ```powershell
-   .\scripts\update-stg.ps1
-   ```
-
-3. Abrir `http://localhost:8081/admin/` y confirmar el indicador **STG**.
-4. Iniciar el cliente aislado:
-
-   ```powershell
-   .\scripts\run-stg-client.ps1
-   ```
-
-5. En **Guardian Admin — STG**, abrir la configuración del dispositivo `Guardian-STG-TEST`/PC TEST.
-6. Desmarcar todas las habilidades de Matemática y Comprensión.
-7. Marcar solamente **Visual Story → Microhistoria → Dónde vivís**, elegir el intervalo de prueba y guardar.
-8. Esperar a que RemoteConfig llegue al cliente o usar **Probar misión ahora** para la primera validación.
-9. Confirmar que la ventana bloquea, reproduce narración y animación, no ofrece respuesta y no muestra **SALIR** antes del final. Confirmar específicamente que el audio se escucha aun con el comportamiento normal de pausa multimedia configurado.
-10. Confirmar que, tras aproximadamente 13,6 segundos, aparece **SALIR** y desbloquea Guardian.
-11. En Activity STG, verificar `MissionStarted`, `VisualStoryStarted`, `VisualStoryAudioStarted`, `VisualStoryAudioCompleted`, `VisualStoryCompleted`, `DeviceLocked` y `DeviceUnlocked`. Ante un problema de sonido, comprobar `SystemAudioMuteSkipped` y `VisualStoryAudioFailed`.
-12. Dejar correr al menos un intervalo completo para confirmar el disparo por timer, no sólo el comando manual.
-
-Esta POC no requiere migración ni endpoint nuevo y no modifica releases/updater.
+1. Instalar el ZIP STG preparado en un directorio de prueba de PC TEST.
+2. Iniciar el cliente con configuración y URL de **STG** exclusivamente.
+3. En Guardian Admin — STG, desmarcar Matemática y Comprensión, y dejar sólo
+   **Visual Story matemática → Multiplicar por 10, 100 y 1000**.
+4. Guardar, esperar RemoteConfig o usar **Probar misión ahora**.
+5. Confirmar bloqueo, animación, narración audible y ausencia de interacción.
+6. Al finalizar, confirmar que aparece **SALIR** y que Activity registra
+   `VisualStoryStarted`, `VisualStoryAudioStarted`,
+   `VisualStoryAudioCompleted` y `VisualStoryCompleted`.
+7. Dejar pasar un intervalo de prueba completo para confirmar el disparo por
+   timer.

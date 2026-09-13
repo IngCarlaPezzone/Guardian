@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $root "dist\Guardian.exe"
 if (!(Test-Path $exe)) {
-  & (Join-Path $PSScriptRoot "build.ps1") -VersionOverride "0.4.10-staging-visual-story.1"
+  & (Join-Path $PSScriptRoot "build.ps1") -VersionOverride "0.4.11-staging-guardian-visual-language.1"
 }
 
 if ($Capture) {

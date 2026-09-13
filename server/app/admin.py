@@ -41,8 +41,8 @@ ADMIN_ICON_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "guardia
 templates.env.globals["admin_icon_version"] = ADMIN_ICON_VERSION
 
 MISSION_LEVELS = [
-    ("visual_story", "location", "Microhistoria", "Experiencia visual breve sin preguntas ni respuestas.", [
-        ("visual_story.location.home", "Dónde vivís", "Recorrido visual desde la Tierra hasta un hogar conceptual en Plottier."),
+    ("visual_story", "math_primer", "Visual Story matemática", "Microanimación breve sin preguntas ni respuestas.", [
+        ("visual_story.math.multiply_by_10_100_1000", "Multiplicar por 10, 100 y 1000", "Regla visual: los ceros después del uno pasan al final de 23."),
     ]),
     ("math", "basic_operations_1", "Operaciones básicas", "Operaciones matemáticas básicas.", [
         ("math.basic_operations_1.addition", "Sumas", "Resolver sumas básicas."),

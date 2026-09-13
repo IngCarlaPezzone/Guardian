@@ -16,13 +16,13 @@ namespace Guardian
 {
     public static class VisualStoryDefinition
     {
-        public const string SkillKey = "visual_story.location.home";
+        public const string SkillKey = "visual_story.math.multiply_by_10_100_1000";
         public const string CategoryId = "visual_story";
-        public const string LevelId = "location";
-        public const string SkillId = "home";
-        public const string VariantId = "where_you_live_plottier";
-        public const string Title = "Dónde vivís";
-        public const double DurationSeconds = 13.6;
+        public const string LevelId = "math_primer";
+        public const string SkillId = "multiply_by_10_100_1000";
+        public const string VariantId = "integer_times_powers_of_ten";
+        public const string Title = "Multiplicar por 10, 100 y 1000";
+        public const double DurationSeconds = 18.0;
 
         public static Mission CreateMission()
         {
@@ -560,7 +560,7 @@ namespace Guardian
         private readonly Mission _mission;
         private readonly GuardianConfig _config;
         private readonly EventLogger _logger;
-        private readonly AssetVisualStorySurface _surface;
+        private readonly MultiplyBy100StorySurface _surface;
         private readonly Button _exitButton;
         private readonly Grid _adminOverlay;
         private readonly TextBox _adminUserBox;
@@ -568,7 +568,8 @@ namespace Guardian
         private readonly TextBlock _adminFeedback;
         private readonly DispatcherTimer _timer;
         private readonly Stopwatch _clock = new Stopwatch();
-        private readonly VisualStoryNarrator _narrator;
+        private readonly VisualStoryMp3Player _narrator;
+        private double _storyDuration = VisualStoryDefinition.DurationSeconds;
         private bool _completed;
         private bool _unlockRequested;
 
@@ -579,12 +580,13 @@ namespace Guardian
         public VisualStoryWindow(Mission mission, GuardianConfig config, EventLogger logger)
         {
             _mission = mission; _config = config; _logger = logger;
-            _narrator = new VisualStoryNarrator(logger, mission);
+            _narrator = new VisualStoryMp3Player(logger, mission);
+            _narrator.DurationAvailable += delegate(double seconds) { _storyDuration = seconds + .85; _surface.DurationSeconds = _storyDuration; if (!_completed) { _clock.Restart(); _timer.Start(); } };
             Title = "Guardian — " + VisualStoryDefinition.Title;
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; WindowState = WindowState.Maximized;
             Topmost = true; ShowInTaskbar = true; Background = Brushes.Black; Foreground = Brushes.White;
             var root = new Grid();
-            _surface = new AssetVisualStorySurface(); root.Children.Add(_surface);
+            _surface = new MultiplyBy100StorySurface(); root.Children.Add(_surface);
 
             _exitButton = MakeButton("SALIR", 108, 42);
             _exitButton.HorizontalAlignment = HorizontalAlignment.Right; _exitButton.VerticalAlignment = VerticalAlignment.Top;
@@ -614,7 +616,7 @@ namespace Guardian
 
             _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
             _timer.Tick += delegate { Advance(); };
-            Loaded += delegate { _clock.Restart(); _timer.Start(); _narrator.Start(); Activate(); };
+            Loaded += delegate { _narrator.Start(); Activate(); };
             Closed += delegate { _timer.Stop(); _narrator.Dispose(); };
         }
 
@@ -631,9 +633,9 @@ namespace Guardian
         private void Advance()
         {
             _surface.PositionSeconds = _clock.Elapsed.TotalSeconds;
-            if (!_completed && _clock.Elapsed.TotalSeconds >= VisualStoryDefinition.DurationSeconds)
+            if (!_completed && _clock.Elapsed.TotalSeconds >= _storyDuration)
             {
-                _completed = true; _timer.Stop(); _narrator.MarkCompleted(); _narrator.Stop("story_completed"); _exitButton.Visibility = Visibility.Visible;
+                _completed = true; _timer.Stop(); _narrator.Stop(); _exitButton.Visibility = Visibility.Visible;
                 if (StoryCompleted != null) StoryCompleted();
             }
         }
@@ -683,7 +685,7 @@ namespace Guardian
             if (!string.IsNullOrWhiteSpace(captureDirectory))
             {
                 var window = new Window { Width = 1280, Height = 720, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false, Left = -2000, Top = 0 };
-                var surface = new AssetVisualStorySurface(); window.Content = surface;
+                var surface = new MultiplyBy100StorySurface { DurationSeconds = VisualStoryDefinition.DurationSeconds }; window.Content = surface;
                 window.Loaded += delegate
                 {
                     try { CaptureFrames(surface, captureDirectory); app.Shutdown(0); }
@@ -695,16 +697,17 @@ namespace Guardian
             var preview = new VisualStoryPreviewWindow(); app.MainWindow = preview; preview.Show(); return app.Run();
         }
 
-        private static void CaptureFrames(AssetVisualStorySurface surface, string directory)
+        private static void CaptureFrames(MultiplyBy100StorySurface surface, string directory)
         {
             Directory.CreateDirectory(directory);
             var frames = new Dictionary<string, double>
             {
-                { "01-tierra-america-del-sur.png", 1.65 },
-                { "02-argentina.png", 4.25 },
-                { "03-neuquen.png", 7.05 },
-                { "04-llegada-plottier.png", 9.55 },
-                { "05-hogar.png", 12.25 }
+                { "01-apertura-multiplicadores.png", 1.60 },
+                { "02-regla-hint-ceros.png", 4.80 },
+                { "03-viaje-cero-por-diez.png", 9.40 },
+                { "04-resultado-por-cien.png", 12.90 },
+                { "05-resultado-por-mil.png", 14.95 },
+                { "06-pregunta-think.png", 17.40 }
             };
             foreach (var frame in frames)
             {
@@ -742,14 +745,16 @@ namespace Guardian
 
     public sealed class VisualStoryPreviewWindow : Window
     {
-        private readonly AssetVisualStorySurface _surface = new AssetVisualStorySurface();
+        private readonly MultiplyBy100StorySurface _surface = new MultiplyBy100StorySurface();
         private readonly DispatcherTimer _timer;
         private readonly Stopwatch _clock = new Stopwatch();
         private readonly Slider _slider;
         private readonly TextBlock _time;
-        private readonly VisualStoryNarrator _narrator = new VisualStoryNarrator();
+        private readonly VisualStoryMp3Player _narrator = new VisualStoryMp3Player(null, null);
+        private double _duration = VisualStoryDefinition.DurationSeconds;
         private bool _playing;
         private bool _updatingSlider;
+        private bool _waitingForAudio;
 
         public VisualStoryPreviewWindow()
         {
@@ -760,26 +765,27 @@ namespace Guardian
             var controls = new Grid { Height = 64, Background = new SolidColorBrush(Color.FromRgb(8, 27, 39)), Margin = new Thickness(0) };
             controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); controls.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); controls.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var restart = new Button { Content = "REINICIAR", Width = 112, Height = 38, Margin = new Thickness(16, 0, 12, 0) }; restart.Click += delegate { Restart(); }; controls.Children.Add(restart);
-            _slider = new Slider { Minimum = 0, Maximum = VisualStoryDefinition.DurationSeconds, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+            _slider = new Slider { Minimum = 0, Maximum = _duration, Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
             _slider.ValueChanged += delegate { if (!_updatingSlider) { Pause(); _surface.PositionSeconds = _slider.Value; UpdateTime(); } }; Grid.SetColumn(_slider, 1); controls.Children.Add(_slider);
             _time = new TextBlock { Width = 88, Foreground = Brushes.White, FontFamily = new FontFamily("Consolas"), FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(_time, 2); controls.Children.Add(_time); Grid.SetRow(controls, 1); root.Children.Add(controls); Content = root;
             _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) }; _timer.Tick += delegate { Advance(); };
+            _narrator.DurationAvailable += delegate(double seconds) { _duration = seconds + .85; _surface.DurationSeconds = _duration; _slider.Maximum = _duration; if (_waitingForAudio) { _waitingForAudio = false; _clock.Restart(); _playing = true; _timer.Start(); } };
             Loaded += delegate { Restart(); }; Closed += delegate { _timer.Stop(); _narrator.Dispose(); };
         }
 
         private void Restart()
         {
-            _surface.PositionSeconds = 0; _clock.Restart(); _playing = true; _timer.Start(); _narrator.Start(); UpdateTime();
+            _timer.Stop(); _narrator.Stop(); _surface.PositionSeconds = 0; _playing = false; _waitingForAudio = true; _narrator.Start(); UpdateTime();
         }
-        private void Pause() { _playing = false; _timer.Stop(); _narrator.Stop("preview_paused"); }
+        private void Pause() { _playing = false; _waitingForAudio = false; _timer.Stop(); _narrator.Stop(); }
         private void Advance()
         {
             if (!_playing) return;
             var position = _clock.Elapsed.TotalSeconds;
-            if (position >= VisualStoryDefinition.DurationSeconds) { position = VisualStoryDefinition.DurationSeconds; Pause(); }
+            if (position >= _duration) { position = _duration; Pause(); }
             _surface.PositionSeconds = position; _updatingSlider = true; _slider.Value = position; _updatingSlider = false; UpdateTime();
         }
-        private void UpdateTime() { _time.Text = _surface.PositionSeconds.ToString("00.0", CultureInfo.InvariantCulture) + " / 13.6"; }
+        private void UpdateTime() { _time.Text = _surface.PositionSeconds.ToString("00.0", CultureInfo.InvariantCulture) + " / " + _duration.ToString("00.0", CultureInfo.InvariantCulture); }
     }
 }

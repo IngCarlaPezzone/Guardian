@@ -3807,7 +3807,13 @@ namespace Guardian
             var mission = catalog.Generate(VisualStoryDefinition.SkillKey, new PrivateMissionProfile(), new Dictionary<string, string>(), new Random(1));
             if (mission == null || mission.CategoryId != VisualStoryDefinition.CategoryId || mission.AcceptedAnswers.Count != 0) failures.Add("visual story mission shape failed");
             var payload = VisualStoryDefinition.Telemetry(mission);
-            if (!payload.ContainsKey("mission_id") || (double)payload["duration_seconds"] < 10 || (double)payload["duration_seconds"] > 15) failures.Add("visual story telemetry or duration failed");
+            if (!payload.ContainsKey("mission_id") || (double)payload["duration_seconds"] < 15 || (double)payload["duration_seconds"] > 20) failures.Add("visual story telemetry or duration failed");
+            var resources = new HashSet<string>(Assembly.GetExecutingAssembly().GetManifestResourceNames());
+            foreach (var asset in new[] { "guardian-number-0.png", "guardian-number-1.png", "guardian-number-2.png", "guardian-number-3.png", "guardian-number-4.png", "guardian-number-5.png", "guardian-number-6.png", "guardian-number-7.png", "guardian-number-8.png", "guardian-number-9.png", "guardian-sign-multiply.png", "guardian-sign-equals.png", "guardian-sign-question.png", "hint.png", "think.png" })
+            {
+                if (!resources.Contains("Guardian.Assets.Icons." + asset)) failures.Add("guardian visual asset missing: " + asset);
+            }
+            if (!File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Audio", "multiply-by-10-100-1000.mp3"))) failures.Add("visual story MP3 missing from build output");
         }
 
         private static void CheckConfig(List<string> failures)
