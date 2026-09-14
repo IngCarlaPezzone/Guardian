@@ -1526,6 +1526,16 @@ namespace Guardian
             return config != null && config.PauseMediaOnMission && config.AllowUnsafeMediaToggle && trigger == MissionTrigger.Timer;
         }
 
+        // La narración de una Visual Story no puede convivir con el audio de un
+        // reproductor externo. A diferencia del mute global (que también
+        // silenciaría a Guardian), el control multimedia intenta pausar el
+        // reproductor activo antes de abrir la story. Sólo se usa en disparos
+        // automáticos: el preview/manual nunca altera la reproducción ajena.
+        public static bool ShouldPauseExternalMediaForVisualStory(MissionTrigger trigger)
+        {
+            return trigger == MissionTrigger.Timer;
+        }
+
         public static bool ShouldResumeMedia(GuardianConfig config)
         {
             return config != null && config.ResumeMediaAfterMission;
@@ -1550,12 +1560,17 @@ namespace Guardian
 
         public static MediaInterruptionSession Start(GuardianConfig config, EventLogger logger, string missionId, MissionTrigger trigger, bool preserveVisualStoryAudio)
         {
-            if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, trigger))
+            var isVisualStoryPause = preserveVisualStoryAudio && MediaInterruptionPolicy.ShouldPauseExternalMediaForVisualStory(trigger);
+            if (isVisualStoryPause || MediaInterruptionPolicy.ShouldRequestPlayPause(config, trigger))
             {
                 try
                 {
                     MediaKeys.SendPlayPause();
-                    logger.Log("MediaPauseRequested", new Dictionary<string, object> { { "missionId", missionId } });
+                    logger.Log("MediaPauseRequested", new Dictionary<string, object>
+                    {
+                        { "missionId", missionId },
+                        { "reason", isVisualStoryPause ? "visual_story_external_media" : "configured_media_pause" }
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -3614,6 +3629,8 @@ namespace Guardian
             config.ResumeMediaAfterMission = false;
             if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, MissionTrigger.Timer)) failures.Add("default timer mission must not toggle media playback");
             if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, MissionTrigger.Manual)) failures.Add("manual tray mission must not toggle media playback");
+            if (!MediaInterruptionPolicy.ShouldPauseExternalMediaForVisualStory(MissionTrigger.Timer)) failures.Add("timer visual story must pause external media");
+            if (MediaInterruptionPolicy.ShouldPauseExternalMediaForVisualStory(MissionTrigger.Manual)) failures.Add("manual visual story preview must not pause external media");
             if (MediaInterruptionPolicy.ShouldResumeMedia(config)) failures.Add("media resume should be disabled by default");
             config.PauseMediaOnMission = true;
             config.AllowUnsafeMediaToggle = false;
