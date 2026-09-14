@@ -23,3 +23,8 @@ Validación visual obligatoria: los objetos Guardian deben verse nítidos, los
 ceros tienen que poder seguirse durante sus trayectorias y los números deben
 explicar el patrón sin depender de texto. Si alguno de esos criterios falla, se
 ajusta la composición antes de promover la build a STG.
+
+En los ejemplos, la ecuación fuente permanece estable y centrada. Una copia de
+`23` viaja por arriba hacia el lado derecho del igual y cada cero viaja por
+abajo. Las estelas se desvanecen antes del resultado final para no competir con
+la lectura de `230`, `2300` o `23000`.

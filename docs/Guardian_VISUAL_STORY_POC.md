@@ -7,6 +7,12 @@ multiplicación de `23` por `10`, `100` y `1000`. Reutiliza el selector de
 misiones, RemoteConfig, intervalo/test interval, bloqueo, pausa de multimedia
 externa, telemetría y salida de Guardian. Matemática y Comprensión no cambian.
 
+Cuando están habilitadas juntas Visual Story y la habilidad matemática
+`multiply_by_powers_of_ten`, ambas forman una única interrupción encadenada:
+la story termina con **CONTINUAR** y abre inmediatamente la misión matemática
+correspondiente, sin desbloquear Guardian entre ambas. Si sólo se habilita
+Visual Story, conserva el comportamiento independiente con **SALIR**.
+
 - Skill: `visual_story.math.multiply_by_10_100_1000`
 - Categoría / nivel: `visual_story` / `math_primer`
 - Audio: `src/Guardian/Assets/Audio/multiply-by-10-100-1000.mp3`
@@ -81,18 +87,33 @@ servidor:
 .\dist\Guardian.exe --visual-story-interruption-preview
 ```
 
+Para validar localmente el encadenamiento completo de primer + misión real:
+
+```powershell
+.\dist\Guardian.exe --visual-story-primer-preview
+```
+
+Ese comando activa sólo esta Visual Story y `multiply_by_powers_of_ten` en un
+home temporal, muestra **CONTINUAR** al final y cierra al resolver la misión.
+
 ## Validación STG manual
 
 No ejecutar en PROD ni en un dispositivo productivo.
 
 1. Instalar el ZIP STG preparado en un directorio de prueba de PC TEST.
 2. Iniciar el cliente con configuración y URL de **STG** exclusivamente.
-3. En Guardian Admin — STG, desmarcar Matemática y Comprensión, y dejar sólo
-   **Visual Story matemática → Multiplicar por 10, 100 y 1000**.
+3. En Guardian Admin — STG, habilitar **Visual Story matemática → Multiplicar
+   por 10, 100 y 1000** y **Matemática → Operaciones básicas → Multiplicaciones
+   por 10, 100 y 1000**. Para validar el encadenamiento, desmarcar las demás
+   habilidades.
 4. Guardar, esperar RemoteConfig o usar **Probar misión ahora**.
 5. Confirmar bloqueo, animación, narración audible y ausencia de interacción.
-6. Al finalizar, confirmar que aparece **SALIR** y que Activity registra
+6. Al finalizar, confirmar que aparece **CONTINUAR**, se abre una multiplicación
+   real por 10, 100 o 1000 y Guardian no se desbloquea entre ambas.
+7. Resolver o salir de la misión matemática y confirmar entonces el desbloqueo.
+8. En Activity, verificar que se registren
    `VisualStoryStarted`, `VisualStoryAudioStarted`,
-   `VisualStoryAudioCompleted` y `VisualStoryCompleted`.
-7. Dejar pasar un intervalo de prueba completo para confirmar el disparo por
+   `VisualStoryAudioCompleted`, `VisualStoryCompleted`,
+   `VisualStoryPrimerContinued` y los eventos de la misión matemática.
+9. Dejar pasar un intervalo de prueba completo para confirmar el disparo por
    timer.

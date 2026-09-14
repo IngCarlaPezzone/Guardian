@@ -525,3 +525,56 @@ Cuando se cree una nueva story:
 - reutilizar assets existentes;
 - describir solo las decisiones particulares del contenido;
 - actualizar este manual únicamente si cambia una regla transversal o se agrega un nuevo elemento reusable al sistema.
+
+---
+
+## 20. Aprendizajes de producción de la primera Visual Story
+
+Estos lineamientos se obtuvieron al construir la story de potencias de diez y
+deben aplicarse al planificar temas futuros, por ejemplo minutos de una hora o
+fracciones.
+
+### Composición
+
+- Empezar con **una composición principal** centrada. Si se presentan varios
+  casos relacionados, ordenarlos verticalmente o en una progresión clara; no
+  llenar una fila horizontal sólo para reflejar el orden de la narración.
+- Dejar aire entre grupos de números y signos. El protagonista no debe competir
+  con una regla, un ícono o una decoración.
+- Mantener los íconos narrativos dentro de la zona de apoyo, pero suficientemente
+  grandes para que se reconozcan a primera vista.
+- El cierre debe reducir la escena a una relación que se pueda leer de inmediato;
+  no dejar copias, estados intermedios ni trayectorias activas sobre el resultado.
+
+### Movimiento que explica
+
+- Una transformación importante necesita una **fuente estable**, una copia o
+  componente identificable que viaja y un destino legible. Evitar sustituir el
+  resultado de golpe.
+- Separar rutas que podrían confundirse: usar alturas, profundidades o ritmos
+  distintos. Por ejemplo, un número completo puede viajar por arriba y sus
+  componentes por debajo.
+- Las estelas sólo acompañan el viaje: bajar su opacidad y eliminarlas antes del
+  hold final.
+- No hacer que los objetos esperen en posiciones ambiguas sobre signos u otros
+  números. Cada fase debe conservar una lectura limpia incluso si se pausa.
+
+### Audio y ritmo
+
+- La animación comienza cuando la reproducción de audio está efectivamente lista,
+  no cuando se solicita abrir el archivo.
+- Mapear cada idea hablada a un beat visual, en lugar de distribuir la animación
+  por duración uniforme.
+- Antes de ralentizar artificialmente una voz, corregir composición y timing. Si
+  aún falta tiempo para entender una transformación, insertar pausas naturales
+  entre ideas o preparar una nueva narración con esos silencios.
+- Reservar un hold breve al terminar cada demostración y uno mayor para una
+  pregunta final.
+
+### Checklist para una nueva story
+
+1. Definir una sola idea visible por bloque y los objetos que la representan.
+2. Diseñar el movimiento sin audio: debe seguir explicando el concepto.
+3. Preparar capturas de inicio, regla, transformación, resultado y cierre.
+4. Revisar solapes, escala, rutas residuales y legibilidad en esas capturas.
+5. Recién entonces sincronizar con el audio real y validar el flujo de Guardian.
