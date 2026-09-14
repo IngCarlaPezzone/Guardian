@@ -34,6 +34,7 @@ la lectura de `230`, `2300` o `23000`.
 Cuando esta Visual Story se ejecuta en un disparo y la misión de potencias de
 diez se presenta en el disparo siguiente, Guardian incluye
 `visual_primer_applied: true` y `visual_primer_skill_id` en los eventos de esa
-misión real. En Actividad, la fila de `MissionSolved` muestra el ícono
-`help_video.png` al final del resumen. El ícono identifica la condición de
+misión real. El ícono `help_video.png` aparece en Métricas, dentro del detalle
+de esa ejecución y al
+final de la línea `Resuelta en … intento`. El ícono identifica la condición de
 apoyo visual previo; no implica por sí mismo una conclusión pedagógica.

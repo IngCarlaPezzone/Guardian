@@ -383,7 +383,6 @@ def device_activity(
             "event": event,
             "summary": event_summary(event),
             "label": event_label(event.event_type),
-            "has_visual_primer": event.event_type == "MissionSolved" and bool((event.payload or {}).get("visual_primer_applied")),
             "occurred_local": event.occurred_at.astimezone(local_tz) if event.occurred_at else None,
             "payload_json": json.dumps(event.payload or {}, ensure_ascii=False, indent=2, sort_keys=True),
         }
