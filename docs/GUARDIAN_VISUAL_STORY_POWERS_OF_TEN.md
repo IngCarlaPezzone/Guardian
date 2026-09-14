@@ -28,3 +28,12 @@ En los ejemplos, la ecuación fuente permanece estable y centrada. Una copia de
 `23` viaja por arriba hacia el lado derecho del igual y cada cero viaja por
 abajo. Las estelas se desvanecen antes del resultado final para no competir con
 la lectura de `230`, `2300` o `23000`.
+
+## Trazabilidad de apoyo visual
+
+Cuando esta Visual Story se ejecuta en un disparo y la misión de potencias de
+diez se presenta en el disparo siguiente, Guardian incluye
+`visual_primer_applied: true` y `visual_primer_skill_id` en los eventos de esa
+misión real. En Actividad, la fila de `MissionSolved` muestra el ícono
+`help_video.png` al final del resumen. El ícono identifica la condición de
+apoyo visual previo; no implica por sí mismo una conclusión pedagógica.

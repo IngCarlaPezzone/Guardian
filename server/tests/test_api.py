@@ -745,6 +745,27 @@ def test_visual_story_can_be_the_only_enabled_mission_and_reaches_remote_config(
         assert config.mission_config == {"enabledSkills": ["visual_story.math.multiply_by_10_100_1000"]}
 
 
+def test_activity_marks_solved_mission_with_prior_visual_primer():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abca"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Visual-Primer-Activity-PC", token_hash=hash_secret("visual-primer-activity-token"), client_version="0.4.11-rc", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="UTC", version=1))
+        db.add_all([
+            DeviceEvent(event_id="50000000-0000-4000-8000-000000000001", device_id=device_id, occurred_at=utcnow(), received_at=utcnow(), event_type="MissionSolved", payload={"mission_id": "primer-result", "category_id": "math", "level_id": "basic_operations_1", "skill_id": "multiply_by_powers_of_ten", "attempt": 1, "visual_primer_applied": True, "visual_primer_skill_id": "visual_story.math.multiply_by_10_100_1000"}),
+            DeviceEvent(event_id="50000000-0000-4000-8000-000000000002", device_id=device_id, occurred_at=utcnow(), received_at=utcnow(), event_type="MissionSolved", payload={"mission_id": "ordinary-result", "category_id": "math", "level_id": "basic_operations_1", "skill_id": "addition", "attempt": 1}),
+        ])
+        db.commit()
+
+    response = client.get(f"/admin/devices/{device_id}/activity?period=all")
+    assert response.status_code == 200
+    assert response.text.count("/admin/static/help_video.png") == 1
+    assert "Respondida después de ver la ayuda visual" in response.text
+    icon = client.get("/admin/static/help_video.png")
+    assert icon.status_code == 200
+    assert icon.headers["content-type"].startswith("image/png")
+
+
 def test_configuration_update_controls_are_stable_and_reuse_update_command_flow():
     client = admin_client()
     device_id = "00000000-0000-4000-8000-00000000abc8"

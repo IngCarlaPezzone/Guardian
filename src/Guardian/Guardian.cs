@@ -1186,6 +1186,11 @@ namespace Guardian
             _visualStoryWindow.StoryCompleted += delegate
             {
                 _logger.Log("VisualStoryCompleted", VisualStoryDefinition.Telemetry(mission));
+                if (string.Equals(_config.MissionRotationState.PendingPrimerSkill, VisualStoryDefinition.PrimerTargetSkillKey, StringComparison.Ordinal))
+                {
+                    _config.MissionRotationState.PendingPrimerCompleted = true;
+                    _config.Save();
+                }
             };
             _visualStoryWindow.UnlockRequested += delegate
             {
@@ -3868,8 +3873,11 @@ namespace Guardian
             var selector = new MissionSelector(config, catalog);
             var primer = selector.Next();
             var pendingSkill = config.MissionRotationState.PendingPrimerSkill;
+            config.MissionRotationState.PendingPrimerCompleted = true;
             var followUp = selector.Next();
-            if (!VisualStoryDefinition.IsPrimerEnabled(config.MissionConfig) || primer == null || primer.SkillId != VisualStoryDefinition.SkillId || pendingSkill != VisualStoryDefinition.PrimerTargetSkillKey || followUp == null || followUp.SkillId != "multiply_by_powers_of_ten") failures.Add("visual story primer must schedule its powers-of-ten mission for the next interval");
+            if (!VisualStoryDefinition.IsPrimerEnabled(config.MissionConfig) || primer == null || primer.SkillId != VisualStoryDefinition.SkillId || pendingSkill != VisualStoryDefinition.PrimerTargetSkillKey || followUp == null || followUp.SkillId != "multiply_by_powers_of_ten" || followUp.VisualPrimerSkillId != VisualStoryDefinition.SkillKey) failures.Add("visual story primer must schedule and mark its powers-of-ten mission for the next interval");
+            var primerPayload = MissionTelemetry.Payload(followUp, 1);
+            if (!primerPayload.ContainsKey("visual_primer_applied") || !primerPayload.ContainsKey("visual_primer_skill_id")) failures.Add("visual story primer telemetry marker failed");
             var resources = new HashSet<string>(Assembly.GetExecutingAssembly().GetManifestResourceNames());
             foreach (var asset in new[] { "guardian-number-0.png", "guardian-number-1.png", "guardian-number-2.png", "guardian-number-3.png", "guardian-number-4.png", "guardian-number-5.png", "guardian-number-6.png", "guardian-number-7.png", "guardian-number-8.png", "guardian-number-9.png", "guardian-sign-multiply.png", "guardian-sign-equals.png", "guardian-sign-question.png", "hint.png", "think.png" })
             {

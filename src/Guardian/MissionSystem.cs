@@ -17,6 +17,10 @@ namespace Guardian
         // Se limita a misiones de fecha: permite comparar la preposición opcional sin relajar otros textos.
         public bool AcceptsNaturalLanguageDate { get; set; }
         public List<MissionHelpStep> HelpSteps { get; set; }
+        // Se asigna sólo a la misión objetivo que llega en el disparo posterior
+        // a una Visual Story completada. Permite analizar su resultado sin
+        // inferir la relación por horarios o por el orden de eventos.
+        public string VisualPrimerSkillId { get; set; }
         // Contexto local para resolver textos dinámicos. Nunca se incluye en telemetría.
         public MissionContentContext ContentContext { get; set; }
     }
@@ -108,6 +112,7 @@ namespace Guardian
         public List<string> UsedSkillsInCycle { get; set; }
         public Dictionary<string, string> LastVariantBySkill { get; set; }
         public string PendingPrimerSkill { get; set; }
+        public bool PendingPrimerCompleted { get; set; }
         public MissionRotationState() { UsedSkillsInCycle = new List<string>(); LastVariantBySkill = new Dictionary<string, string>(); }
     }
 
@@ -138,6 +143,11 @@ namespace Guardian
         public static Dictionary<string, object> Payload(Mission m, int attempt, int maxHelpLevel, int helpRequestsCount, bool hadOrthographicError, int writingCorrectionCount, bool writingAnswerRevealed, string answer, string failureReason)
         {
             var payload = new Dictionary<string, object> { { "mission_id", m.Id }, { "missionId", m.Id }, { "category_id", m.CategoryId }, { "level_id", m.LevelId }, { "skill_level_id", m.LevelId }, { "skill_id", m.SkillId }, { "variant_id", m.VariantId }, { "attempt", attempt }, { "max_help_level", maxHelpLevel }, { "help_requests_count", helpRequestsCount }, { "had_orthographic_error", hadOrthographicError }, { "writing_correction_count", writingCorrectionCount }, { "writing_answer_revealed", writingAnswerRevealed } };
+            if (!string.IsNullOrWhiteSpace(m.VisualPrimerSkillId))
+            {
+                payload["visual_primer_applied"] = true;
+                payload["visual_primer_skill_id"] = m.VisualPrimerSkillId;
+            }
             if (answer != null)
             {
                 payload["answer"] = answer;
@@ -226,11 +236,14 @@ namespace Guardian
             {
                 var pendingSkill = state.PendingPrimerSkill;
                 state.PendingPrimerSkill = null;
-                if (effective.Contains(pendingSkill))
+                var primerCompleted = state.PendingPrimerCompleted;
+                state.PendingPrimerCompleted = false;
+                if (primerCompleted && effective.Contains(pendingSkill))
                 {
                     var pendingMission = _catalog.Generate(pendingSkill, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
                     if (pendingMission != null)
                     {
+                        pendingMission.VisualPrimerSkillId = VisualStoryDefinition.SkillKey;
                         state.UsedSkillsInCycle.Add(pendingSkill); state.LastVariantBySkill[pendingSkill] = pendingMission.VariantId; _config.Save(); return pendingMission;
                     }
                 }
@@ -245,7 +258,7 @@ namespace Guardian
             {
                 var visualMission = _catalog.Generate(VisualStoryDefinition.SkillKey, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
                 if (visualMission == null) return null;
-                state.UsedSkillsInCycle.Add(key); state.PendingPrimerSkill = key; state.LastVariantBySkill[VisualStoryDefinition.SkillKey] = visualMission.VariantId; _config.Save(); return visualMission;
+                state.UsedSkillsInCycle.Add(key); state.PendingPrimerSkill = key; state.PendingPrimerCompleted = false; state.LastVariantBySkill[VisualStoryDefinition.SkillKey] = visualMission.VariantId; _config.Save(); return visualMission;
             }
             var mission = _catalog.Generate(key, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
             if (mission == null) return null;
