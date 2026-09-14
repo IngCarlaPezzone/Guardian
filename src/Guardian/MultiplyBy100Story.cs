@@ -35,8 +35,9 @@ namespace Guardian
 
         private static void Opening(DrawingContext dc, double t)
         {
-            Multiplier(dc, 10, 330, 300, 1, Elastic(Math.Min(1, t * 1.7))); Multiplier(dc, 100, 640, 300, 1, Elastic(Math.Max(0, t * 2.8 - .42))); Multiplier(dc, 1000, 980, 300, 1, Elastic(Math.Max(0, t * 2.5 - .82)));
-            Pulse(dc, 390, 300, Color.FromRgb(40, 215, 210), .16 + .08 * Math.Sin(t * 16)); Pulse(dc, 760, 300, Color.FromRgb(40, 215, 210), .16 + .08 * Math.Sin(t * 16)); Pulse(dc, 1120, 300, Color.FromRgb(40, 215, 210), .16 + .08 * Math.Sin(t * 16));
+            var first = Elastic(Math.Min(1, t * 2.1)); var second = Elastic(Math.Max(0, t * 2.7 - .58)); var third = Elastic(Math.Max(0, t * 3.1 - 1.18));
+            Multiplier(dc, 10, 620, 205, 1, first); Multiplier(dc, 100, 580, 360, 1, second); Multiplier(dc, 1000, 540, 515, 1, third);
+            Pulse(dc, 650, 205, Color.FromRgb(40, 215, 210), .13 + .09 * Math.Sin(t * 16) * first); Pulse(dc, 660, 360, Color.FromRgb(40, 215, 210), .13 + .09 * Math.Sin(t * 16) * second); Pulse(dc, 670, 515, Color.FromRgb(40, 215, 210), .13 + .09 * Math.Sin(t * 16) * third);
         }
 
         private static void Discover(DrawingContext dc, double t)
@@ -47,27 +48,33 @@ namespace Guardian
                 var y = rows[count - 1]; Multiplier(dc, Pow10(count), 650, y, .68, 1);
                 for (var zero = 0; zero < count; zero++) { var delay = (count - 1) * .18 + zero * .11; var p = Math.Max(0, Math.Min(1, (t - delay) / .24)); var x = 650 + (zero + 1) * 82 * .68; Pulse(dc, x, y, Color.FromRgb(40, 215, 210), .16 + .32 * Math.Sin(p * Math.PI)); Asset(dc, "guardian-number-0.png", x, y, 105, 1, 1 + .13 * Math.Sin(p * Math.PI), 0, 1); }
             }
-            Asset(dc, "hint.png", 105, 600, 102, Ease(Math.Min(1, t * 3)), 1 + .04 * Math.Sin(t * Math.PI * 4), 0, 1);
-            if (t > .62) Number(dc, 23, 300 + Ease((t - .62) / .38) * 160, 500 - Ease((t - .62) / .38) * 145, 138, Ease((t - .62) / .38), 1, 0);
+            Asset(dc, "hint.png", 150, 585, 152, Ease(Math.Min(1, t * 3)), 1 + .04 * Math.Sin(t * Math.PI * 4), 0, 1);
+            if (t > .62) Number(dc, 23, 315 + Ease((t - .62) / .38) * 45, 350, 116, Ease((t - .62) / .38), 1, 0);
         }
 
         private static void Example(DrawingContext dc, int zeros, double t)
         {
-            var flyStart = .34; var flyEnd = .78; var pre = Ease(Math.Min(1, t / .24)); var y = 360.0; var flightOpacity = t > .81 ? 1 - Ease((t - .81) / .14) : 1;
-            Number(dc, 23, 315, y, 155, pre * flightOpacity, 1, 0); Asset(dc, "guardian-sign-multiply.png", 555, y, 100, pre * flightOpacity, 1, 0, 1); Asset(dc, "guardian-number-1.png", 675, y, 132, pre * flightOpacity, 1, 0, 1);
+            var flyStart = .28; var flyEnd = .78; var pre = Ease(Math.Min(1, t / .20)); var y = 365.0;
+            var sourceX = zeros == 1 ? 350.0 : zeros == 2 ? 280.0 : 210.0; var multiplyX = sourceX + 150; var oneX = sourceX + 235; var zeroX = sourceX + 310;
+            var equalsX = zeroX + (zeros - 1) * 62 + 100; var resultX = equalsX + 100; var upperStart = new Point(sourceX, y); var upperEnd = new Point(resultX, y);
+            Number(dc, 23, sourceX, y, 95, pre, 1, 0); Asset(dc, "guardian-sign-multiply.png", multiplyX, y, 76, pre, 1, 0, 1); Asset(dc, "guardian-number-1.png", oneX, y, 92, pre, 1, 0, 1);
+            Asset(dc, "guardian-sign-equals.png", equalsX, y, 72, pre, 1, 0, 1);
             for (var i = 0; i < zeros; i++)
             {
-                var startX = 770 + i * 88; var endX = 520 + i * 82; var offset = i * .075; var p = Smooth((t - flyStart - offset) / (flyEnd - flyStart)); var point = Bezier(new Point(startX, y), new Point(startX + 55, 145 + i * 48), new Point(endX - 80, 175 - i * 38), new Point(endX, y), p);
-                if (t >= flyStart + offset) { Path(dc, new Point(startX, y), new Point(startX + 55, 145 + i * 48), new Point(endX - 80, 175 - i * 38), new Point(endX, y), Color.FromRgb(40, 215, 210), p); Pulse(dc, point.X, point.Y, Color.FromRgb(40, 215, 210), .22 * flightOpacity); Asset(dc, "guardian-number-0.png", point.X, point.Y, 132, flightOpacity, 1 + .12 * Math.Sin(p * Math.PI), (i % 2 == 0 ? -1 : 1) * 8 * Math.Sin(p * Math.PI), 1); }
-                else Asset(dc, "guardian-number-0.png", startX, y, 132, pre * flightOpacity, 1 + .08 * Math.Sin(t * Math.PI * 5), 0, 1);
+                Asset(dc, "guardian-number-0.png", zeroX + i * 62, y, 92, pre, 1 + .06 * Math.Sin(t * Math.PI * 5), 0, 1);
             }
-            if (t > .81)
+            var upperP = Smooth((t - flyStart) / (flyEnd - flyStart)); var trailOpacity = 1 - Smooth((t - .72) / .20);
+            if (t >= flyStart)
             {
-                var settle = Elastic(Math.Min(1, (t - .81) / .19)); var opacity = Ease((t - .81) / .16); var sourceX = 180.0;
-                Number(dc, 23, sourceX, 545, 106, opacity, settle, 0); Asset(dc, "guardian-sign-multiply.png", 347, 545, 80, opacity, settle, 0, 1); Asset(dc, "guardian-number-1.png", 445, 545, 98, opacity, settle, 0, 1);
-                for (var i = 0; i < zeros; i++) Asset(dc, "guardian-number-0.png", 520 + i * 62, 545, 98, opacity, settle, 0, 1);
-                Asset(dc, "guardian-sign-equals.png", 700, 545, 76, opacity, settle, 0, 1); Number(dc, 23, 800, 545, 106, opacity, settle, 0);
-                for (var i = 0; i < zeros; i++) { Pulse(dc, 905 + i * 62, 545, Color.FromRgb(40, 215, 210), .25 * (1 - Math.Min(1, (t - .81) * 5))); Asset(dc, "guardian-number-0.png", 905 + i * 62, 545, 106, opacity, settle, 0, 1); }
+                var point = Bezier(upperStart, new Point(sourceX + 100, 165), new Point(resultX - 95, 170), upperEnd, upperP);
+                if (trailOpacity > 0) Path(dc, upperStart, new Point(sourceX + 100, 165), new Point(resultX - 95, 170), upperEnd, Color.FromRgb(255, 190, 62), upperP, trailOpacity);
+                Pulse(dc, point.X, point.Y, Color.FromRgb(255, 190, 62), .18 * trailOpacity); Number(dc, 23, point.X, point.Y, 95, 1, 1 + .08 * Math.Sin(upperP * Math.PI), 0);
+                for (var i = 0; i < zeros; i++)
+                {
+                    var offset = i * .055; var p = Smooth((t - flyStart - offset) / (flyEnd - flyStart)); var start = new Point(zeroX + i * 62, y); var end = new Point(resultX + 122 + i * 61, y); var lower = Bezier(start, new Point(start.X + 45, 555 + i * 20), new Point(end.X - 80, 560 + i * 16), end, p);
+                    if (trailOpacity > 0) Path(dc, start, new Point(start.X + 45, 555 + i * 20), new Point(end.X - 80, 560 + i * 16), end, Color.FromRgb(40, 215, 210), p, trailOpacity);
+                    Pulse(dc, lower.X, lower.Y, Color.FromRgb(40, 215, 210), .19 * trailOpacity); Asset(dc, "guardian-number-0.png", lower.X, lower.Y, 95, 1, 1 + .11 * Math.Sin(p * Math.PI), (i % 2 == 0 ? -1 : 1) * 6 * Math.Sin(p * Math.PI), 1);
+                }
             }
         }
 
@@ -86,7 +93,7 @@ namespace Guardian
         private static void Asset(DrawingContext dc, string name, double x, double y, double size, double opacity, double scale, double rotation, double squash) { var image = Load(name); if (image == null) return; dc.PushOpacity(Math.Max(0, Math.Min(1, opacity))); dc.PushTransform(new RotateTransform(rotation, x, y)); dc.PushTransform(new ScaleTransform(scale, scale * squash, x, y)); dc.DrawImage(image, new Rect(x - size / 2, y - size / 2, size, size)); dc.Pop(); dc.Pop(); dc.Pop(); }
         private static BitmapSource Load(string name) { BitmapSource image; if (Assets.TryGetValue(name, out image)) return image; using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Guardian.Assets.Icons." + name)) { if (stream == null) return null; var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad); image = decoder.Frames[0]; image.Freeze(); Assets[name] = image; return image; } }
         private static void Pulse(DrawingContext dc, double x, double y, Color color, double alpha) { dc.DrawEllipse(new RadialGradientBrush(Color.FromArgb((byte)(255 * Math.Max(0, alpha)), color.R, color.G, color.B), Color.FromArgb(0, color.R, color.G, color.B)), null, new Point(x, y), 88, 88); }
-        private static void Path(DrawingContext dc, Point a, Point b, Point c, Point d, Color color, double progress) { var g = new StreamGeometry(); using (var k = g.Open()) { k.BeginFigure(a, false, false); k.BezierTo(b, c, d, true, false); } g.Freeze(); dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb(95, color.R, color.G, color.B)), 3) { DashStyle = new DashStyle(new[] { 4.0, 8.0 }, progress * 22) }, g); }
+        private static void Path(DrawingContext dc, Point a, Point b, Point c, Point d, Color color, double progress, double opacity) { var g = new StreamGeometry(); using (var k = g.Open()) { k.BeginFigure(a, false, false); k.BezierTo(b, c, d, true, false); } g.Freeze(); dc.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb((byte)(95 * Math.Max(0, Math.Min(1, opacity))), color.R, color.G, color.B)), 3) { DashStyle = new DashStyle(new[] { 4.0, 8.0 }, progress * 22) }, g); }
         private static Point Bezier(Point a, Point b, Point c, Point d, double t) { t = Math.Max(0, Math.Min(1, t)); var u = 1 - t; return new Point(u * u * u * a.X + 3 * u * u * t * b.X + 3 * u * t * t * c.X + t * t * t * d.X, u * u * u * a.Y + 3 * u * u * t * b.Y + 3 * u * t * t * c.Y + t * t * t * d.Y); }
         private static double Ease(double t) { t = Math.Max(0, Math.Min(1, t)); return 1 - Math.Pow(1 - t, 3); } private static double Smooth(double t) { t = Math.Max(0, Math.Min(1, t)); return t * t * (3 - 2 * t); } private static double Elastic(double t) { if (t <= 0 || t >= 1) return t; return Math.Pow(2, -8 * t) * Math.Sin((t * 8 - .75) * (2 * Math.PI / 3)) + 1; }
     }
