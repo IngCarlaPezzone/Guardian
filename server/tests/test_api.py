@@ -8,7 +8,8 @@ os.environ["GUARDIAN_SESSION_SECRET"] = "test-session-secret"
 
 from fastapi.testclient import TestClient
 
-from server.app.admin import ADMIN_CSS_VERSION, admin_title_with_section, sign_username
+from server.app.admin import ADMIN_CSS_VERSION, admin_title_with_section, sign_username, supports_remote_controls
+from server.app.config import settings
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
@@ -495,6 +496,16 @@ def test_configuration_quick_actions_follow_guardian_state_with_prerelease_versi
     actions_start = offline_page.text.index('device-actions')
     actions_end = offline_page.text.index('<details class="card config-card"', actions_start)
     assert 'form="device-config-form"' not in offline_page.text[actions_start:actions_end]
+
+
+def test_staging_semver_line_supports_remote_controls(monkeypatch):
+    device = Device(machine_name="Staging-Version-PC", token_hash=hash_secret("staging-version-token"), client_version="0.1.0-staging-visual-story")
+
+    monkeypatch.setattr(settings, "guardian_environment", "STG")
+    assert supports_remote_controls(device)
+
+    monkeypatch.setattr(settings, "guardian_environment", "PROD")
+    assert not supports_remote_controls(device)
 
 
 def test_configuration_update_status_uses_device_state_and_human_messages():

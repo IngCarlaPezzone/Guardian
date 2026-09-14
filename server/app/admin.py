@@ -243,7 +243,14 @@ def active_device_command(db: Session, device_id: str) -> DeviceCommand | None:
 
 
 def supports_remote_controls(device: Device) -> bool:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?", (device.client_version or "").strip())
+    version = (device.client_version or "").strip()
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?", version)
+    if settings.guardian_environment.strip().upper() == "STG" and re.fullmatch(r"\d+\.\d+\.\d+-staging-[0-9A-Za-z.-]+", version):
+        # STG usa su propia secuencia SemVer (por ejemplo 0.1.0-staging-*),
+        # independiente de la versión histórica que introdujo los controles.
+        # La capacidad está validada por la release STG, no por compararla con
+        # el número de la línea de producción.
+        return True
     return match is not None and tuple(int(part) for part in match.groups()) >= (0, 3, 2)
 
 
