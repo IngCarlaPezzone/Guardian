@@ -53,10 +53,11 @@ POC actual.
 
 ## Audio durante una interrupción
 
-En un disparo automático, `MediaInterruptionSession` envía la solicitud de
-pausa al reproductor multimedia externo activo antes de abrir una
-`visual_story` (`MediaPauseRequested` con razón
-`visual_story_external_media`). No aplica el mute global del endpoint de
+En un disparo automático, `MediaInterruptionSession` envía el comando
+unidireccional **Pause** a la aplicación que estaba en primer plano antes de
+abrir una `visual_story` (`MediaPauseRequested` con razón
+`visual_story_external_media`). No usa el toggle global Play/Pause: por eso una
+pestaña ya pausada no se reanuda. No aplica el mute global del endpoint de
 Windows y deja registrado `SystemAudioMuteSkipped`; así la narración propia
 puede escucharse. El preview/manual no altera multimedia ajena. Los eventos de
 diagnóstico son `VisualStoryAudioLoading`, `VisualStoryAudioStarted`,

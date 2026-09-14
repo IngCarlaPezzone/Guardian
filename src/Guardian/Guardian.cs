@@ -1565,11 +1565,16 @@ namespace Guardian
             {
                 try
                 {
-                    MediaKeys.SendPlayPause();
+                    var mediaCommand = isVisualStoryPause ? "pause" : "play_pause";
+                    var dispatched = isVisualStoryPause
+                        ? MediaKeys.SendPauseToForegroundApp()
+                        : MediaKeys.SendPlayPause();
                     logger.Log("MediaPauseRequested", new Dictionary<string, object>
                     {
                         { "missionId", missionId },
-                        { "reason", isVisualStoryPause ? "visual_story_external_media" : "configured_media_pause" }
+                        { "reason", isVisualStoryPause ? "visual_story_external_media" : "configured_media_pause" },
+                        { "media_command", mediaCommand },
+                        { "command_dispatched", dispatched }
                     });
                 }
                 catch (Exception ex)
@@ -1657,15 +1662,38 @@ namespace Guardian
     {
         private const byte VkMediaPlayPause = 0xB3;
         private const int KeyeventfKeyup = 0x0002;
+        private const uint WmAppCommand = 0x0319;
+        private const int AppCommandMediaPause = 47;
+        private const uint SmtoAbortIfHung = 0x0002;
 
         [DllImport("user32.dll")]
         private static extern void keybd_event(byte bVk, byte bScan, int dwFlags, UIntPtr dwExtraInfo);
 
-        public static void SendPlayPause()
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+
+        public static bool SendPlayPause()
         {
             keybd_event(VkMediaPlayPause, 0, 0, UIntPtr.Zero);
             Thread.Sleep(40);
             keybd_event(VkMediaPlayPause, 0, KeyeventfKeyup, UIntPtr.Zero);
+            return true;
+        }
+
+        // A diferencia de la tecla global Play/Pause, este comando no invierte
+        // el estado del reproductor: una pestaña ya pausada permanece pausada.
+        // Se dirige a la aplicación que estaba en primer plano antes de que
+        // Guardian muestre su ventana de bloqueo.
+        public static bool SendPauseToForegroundApp()
+        {
+            var target = GetForegroundWindow();
+            if (target == IntPtr.Zero) return false;
+            IntPtr result;
+            var command = new IntPtr(AppCommandMediaPause << 16);
+            return SendMessageTimeout(target, WmAppCommand, target, command, SmtoAbortIfHung, 500, out result) != IntPtr.Zero;
         }
     }
 
