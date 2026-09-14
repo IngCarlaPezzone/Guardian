@@ -17,6 +17,10 @@ namespace Guardian
         // Se limita a misiones de fecha: permite comparar la preposición opcional sin relajar otros textos.
         public bool AcceptsNaturalLanguageDate { get; set; }
         public List<MissionHelpStep> HelpSteps { get; set; }
+        // Se asigna sólo a la misión objetivo que llega en el disparo posterior
+        // a una Visual Story completada. Permite analizar su resultado sin
+        // inferir la relación por horarios o por el orden de eventos.
+        public string VisualPrimerSkillId { get; set; }
         // Contexto local para resolver textos dinámicos. Nunca se incluye en telemetría.
         public MissionContentContext ContentContext { get; set; }
     }
@@ -107,6 +111,8 @@ namespace Guardian
         public string LocalDate { get; set; }
         public List<string> UsedSkillsInCycle { get; set; }
         public Dictionary<string, string> LastVariantBySkill { get; set; }
+        public string PendingPrimerSkill { get; set; }
+        public bool PendingPrimerCompleted { get; set; }
         public MissionRotationState() { UsedSkillsInCycle = new List<string>(); LastVariantBySkill = new Dictionary<string, string>(); }
     }
 
@@ -137,6 +143,11 @@ namespace Guardian
         public static Dictionary<string, object> Payload(Mission m, int attempt, int maxHelpLevel, int helpRequestsCount, bool hadOrthographicError, int writingCorrectionCount, bool writingAnswerRevealed, string answer, string failureReason)
         {
             var payload = new Dictionary<string, object> { { "mission_id", m.Id }, { "missionId", m.Id }, { "category_id", m.CategoryId }, { "level_id", m.LevelId }, { "skill_level_id", m.LevelId }, { "skill_id", m.SkillId }, { "variant_id", m.VariantId }, { "attempt", attempt }, { "max_help_level", maxHelpLevel }, { "help_requests_count", helpRequestsCount }, { "had_orthographic_error", hadOrthographicError }, { "writing_correction_count", writingCorrectionCount }, { "writing_answer_revealed", writingAnswerRevealed } };
+            if (!string.IsNullOrWhiteSpace(m.VisualPrimerSkillId))
+            {
+                payload["visual_primer_applied"] = true;
+                payload["visual_primer_skill_id"] = m.VisualPrimerSkillId;
+            }
             if (answer != null)
             {
                 payload["answer"] = answer;
@@ -220,14 +231,40 @@ namespace Guardian
             if (state.LocalDate != today) { state.LocalDate = today; state.UsedSkillsInCycle.Clear(); }
             var effective = _catalog.EffectiveSkills(_config.MissionConfig);
             if (effective.Count == 0) { _config.Save(); return null; }
+            var primerEnabled = VisualStoryDefinition.IsPrimerEnabled(_config.MissionConfig);
+            if (primerEnabled && !string.IsNullOrWhiteSpace(state.PendingPrimerSkill))
+            {
+                var pendingSkill = state.PendingPrimerSkill;
+                state.PendingPrimerSkill = null;
+                var primerCompleted = state.PendingPrimerCompleted;
+                state.PendingPrimerCompleted = false;
+                if (primerCompleted && effective.Contains(pendingSkill))
+                {
+                    var pendingMission = _catalog.Generate(pendingSkill, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
+                    if (pendingMission != null)
+                    {
+                        pendingMission.VisualPrimerSkillId = VisualStoryDefinition.SkillKey;
+                        state.UsedSkillsInCycle.Add(pendingSkill); state.LastVariantBySkill[pendingSkill] = pendingMission.VariantId; _config.Save(); return pendingMission;
+                    }
+                }
+            }
+            if (primerEnabled) effective.Remove(VisualStoryDefinition.SkillKey);
+            if (effective.Count == 0) { _config.Save(); return null; }
             state.UsedSkillsInCycle.RemoveAll(delegate(string x) { return !effective.Contains(x); });
             var candidates = effective.FindAll(delegate(string x) { return !state.UsedSkillsInCycle.Contains(x); });
             if (candidates.Count == 0) { state.UsedSkillsInCycle.Clear(); candidates.AddRange(effective); }
             var key = candidates[_random.Next(candidates.Count)];
+            if (primerEnabled && string.Equals(key, VisualStoryDefinition.PrimerTargetSkillKey, StringComparison.Ordinal))
+            {
+                var visualMission = _catalog.Generate(VisualStoryDefinition.SkillKey, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
+                if (visualMission == null) return null;
+                state.UsedSkillsInCycle.Add(key); state.PendingPrimerSkill = key; state.PendingPrimerCompleted = false; state.LastVariantBySkill[VisualStoryDefinition.SkillKey] = visualMission.VariantId; _config.Save(); return visualMission;
+            }
             var mission = _catalog.Generate(key, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
             if (mission == null) return null;
             state.UsedSkillsInCycle.Add(key); state.LastVariantBySkill[key] = mission.VariantId; _config.Save(); return mission;
         }
+
     }
 
     public sealed class MissionCatalog
@@ -236,6 +273,7 @@ namespace Guardian
         private static readonly string[] Months = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
         private static readonly string[] Seasons = { "invierno", "primavera", "verano", "otoño" };
         private static readonly HashSet<string> AlwaysAvailableSkills = new HashSet<string>(StringComparer.Ordinal) {
+            VisualStoryDefinition.SkillKey,
             "math.basic_operations_1.addition", "math.basic_operations_1.subtraction", "math.basic_operations_1.multiplication",
             "math.basic_operations_1.exact_division_one_digit", "math.basic_operations_1.exact_division_two_digits",
             "math.basic_operations_1.exact_division_tens", "math.basic_operations_1.multiply_by_powers_of_ten",
@@ -262,6 +300,7 @@ namespace Guardian
         public Mission Generate(string key, PrivateMissionProfile p, Dictionary<string, string> last, Random r)
         {
             if (!CanGenerate(key, p)) return null;
+            if (key == VisualStoryDefinition.SkillKey) return VisualStoryDefinition.CreateMission();
             if (key.StartsWith("math.basic_operations_1.", StringComparison.Ordinal)) return BasicMathMission(key, r);
             if (key.StartsWith("math.word_problems_1.", StringComparison.Ordinal)) return WordProblem(key, last, r);
             if (key.EndsWith(".identity")) return Identity(p, last, r);

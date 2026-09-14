@@ -1,4 +1,7 @@
-param([string]$VersionOverride = "")
+param(
+  [string]$VersionOverride = "",
+  [string]$OutputDirectory = ""
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -6,10 +9,16 @@ $root = Split-Path -Parent $PSScriptRoot
 $src = Join-Path $root "src\Guardian\Guardian.cs"
 $missionSrc = Join-Path $root "src\Guardian\MissionSystem.cs"
 $missionContentSrc = Join-Path $root "src\Guardian\MissionContent.cs"
+$visualStorySrc = Join-Path $root "src\Guardian\VisualStory.cs"
+$multiplyStorySrc = Join-Path $root "src\Guardian\MultiplyBy100Story.cs"
 $installPathsSrc = Join-Path $root "src\Guardian\GuardianInstallPaths.cs"
 $iconResources = @(Get-ChildItem (Join-Path $root "src\Guardian\Assets\Icons") -Filter "*.png" | ForEach-Object { "/resource:$($_.FullName),Guardian.Assets.Icons.$($_.Name)" })
+$audioResources = @(Get-ChildItem (Join-Path $root "src\Guardian\Assets\Audio") -Filter "*.wav" | ForEach-Object { "/resource:$($_.FullName),Guardian.Assets.Audio.$($_.Name)" })
+$visualStoryResources = @(Get-ChildItem (Join-Path $root "src\Guardian\Assets\VisualStory") -Filter "*.png" | ForEach-Object { "/resource:$($_.FullName),Guardian.Assets.VisualStory.$($_.Name)" })
 $updaterSrc = Join-Path $root "updater\src\GuardianUpdater.cs"
-$outDir = Join-Path $root "dist"
+$outDir = if ($OutputDirectory) {
+  if ([System.IO.Path]::IsPathRooted($OutputDirectory)) { $OutputDirectory } else { Join-Path $root $OutputDirectory }
+} else { Join-Path $root "dist" }
 $objDir = Join-Path $root "obj"
 $out = Join-Path $outDir "Guardian.exe"
 $updaterOut = Join-Path $outDir "GuardianUpdater.exe"
@@ -52,9 +61,13 @@ Set-Content -Encoding UTF8 -Path $updaterVersionSrc -Value "namespace GuardianUp
   $src `
   $missionSrc `
   $missionContentSrc `
+  $visualStorySrc `
+  $multiplyStorySrc `
   $installPathsSrc `
   $guardianVersionSrc `
-  $iconResources
+  $iconResources `
+  $audioResources `
+  $visualStoryResources
 
 if ($LASTEXITCODE -ne 0) {
   throw "Build fallo con codigo $LASTEXITCODE"
@@ -64,6 +77,9 @@ Copy-Item -Force (Join-Path $root "src\Guardian\App.config") "$out.config"
 $assetOutputDir = Join-Path $outDir "Assets\Icons"
 New-Item -ItemType Directory -Force -Path $assetOutputDir | Out-Null
 Copy-Item -Force (Join-Path $root "src\Guardian\Assets\Icons\*.png") $assetOutputDir
+$audioOutputDir = Join-Path $outDir "Assets\Audio"
+New-Item -ItemType Directory -Force -Path $audioOutputDir | Out-Null
+Copy-Item -Force (Join-Path $root "src\Guardian\Assets\Audio\multiply-by-10-100-1000.mp3") $audioOutputDir
 & $csc `
   /nologo `
   /target:winexe `

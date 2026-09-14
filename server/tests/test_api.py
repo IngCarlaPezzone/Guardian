@@ -8,7 +8,8 @@ os.environ["GUARDIAN_SESSION_SECRET"] = "test-session-secret"
 
 from fastapi.testclient import TestClient
 
-from server.app.admin import ADMIN_CSS_VERSION, admin_title_with_section, sign_username
+from server.app.admin import ADMIN_CSS_VERSION, admin_title_with_section, sign_username, supports_remote_controls
+from server.app.config import settings
 from server.app.bootstrap import ensure_admin
 from server.app.db import SessionLocal, engine
 from server.app.main import app
@@ -497,6 +498,16 @@ def test_configuration_quick_actions_follow_guardian_state_with_prerelease_versi
     assert 'form="device-config-form"' not in offline_page.text[actions_start:actions_end]
 
 
+def test_staging_semver_line_supports_remote_controls(monkeypatch):
+    device = Device(machine_name="Staging-Version-PC", token_hash=hash_secret("staging-version-token"), client_version="0.1.0-staging-visual-story")
+
+    monkeypatch.setattr(settings, "guardian_environment", "STG")
+    assert supports_remote_controls(device)
+
+    monkeypatch.setattr(settings, "guardian_environment", "PROD")
+    assert not supports_remote_controls(device)
+
+
 def test_configuration_update_status_uses_device_state_and_human_messages():
     client = admin_client()
     offline_id = "00000000-0000-4000-8000-000000000184"
@@ -664,11 +675,13 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
     assert "Situaciones problemáticas" in page.text
     assert "Ubicación personal" in page.text
     assert "Información explícita en una oración" in page.text
+    assert "Visual Story" in page.text
+    assert "Multiplicar por 10, 100 y 1000" in page.text
     assert "aria-label" in page.text
     assert page.text.count("<h3>Matemática</h3>") == 1
     assert page.text.count("<h3>Comprensión</h3>") == 1
-    assert page.text.count('class="hierarchy-label">Nivel</span>') == 4
-    assert page.text.count('class="hierarchy-label">Habilidades</span>') == 4
+    assert page.text.count('class="hierarchy-label">Nivel</span>') == 5
+    assert page.text.count('class="hierarchy-label">Habilidades</span>') == 5
 
     response = client.post(f"/admin/devices/{device_id}/config", data={
         "display_name": "Mission Test", "interval_minutes": "15", "missions_submitted": "1",
@@ -704,6 +717,54 @@ def test_admin_mission_configuration_and_private_profile_are_device_scoped():
         assert profile.city == "Ciudad Ejemplo"
         assert profile.province == "Provincia Ejemplo"
         assert profile.country == "País Ejemplo"
+
+
+def test_visual_story_can_be_the_only_enabled_mission_and_reaches_remote_config():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abc9"
+    token = "visual-story-test-token"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Visual-Story-Test-PC", token_hash=hash_secret(token), client_version="0.4.10-staging-visual-story.1", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, version=3, mission_config={"enabledSkills": ["math.basic_operations_1.addition"]}))
+        db.commit()
+
+    response = client.post(f"/admin/devices/{device_id}/config", data={
+        "display_name": "Visual Story Test", "interval_minutes": "2", "missions_submitted": "1",
+        "enabled_skills": ["visual_story.math.multiply_by_10_100_1000"],
+    }, follow_redirects=False)
+    assert response.status_code == 303
+
+    remote = client.get(f"/api/v1/devices/{device_id}/config", headers={"Authorization": f"Bearer {token}"})
+    assert remote.status_code == 200
+    assert remote.json()["interval_seconds"] == 120
+    assert remote.json()["mission_config"]["EnabledSkills"] == ["visual_story.math.multiply_by_10_100_1000"]
+
+    with SessionLocal() as db:
+        config = db.query(DeviceConfiguration).filter(DeviceConfiguration.device_id == device_id).one()
+        assert config.version == 4
+        assert config.mission_config == {"enabledSkills": ["visual_story.math.multiply_by_10_100_1000"]}
+
+
+def test_metrics_execution_marks_solved_mission_with_prior_visual_primer():
+    client = admin_client()
+    device_id = "00000000-0000-4000-8000-00000000abca"
+    with SessionLocal() as db:
+        db.add(Device(id=device_id, machine_name="Visual-Primer-Activity-PC", token_hash=hash_secret("visual-primer-activity-token"), client_version="0.4.11-rc", last_seen_at=utcnow()))
+        db.add(DeviceConfiguration(device_id=device_id, interval_seconds=900, timezone="UTC", version=1))
+        db.add_all([
+            DeviceEvent(event_id="50000000-0000-4000-8000-000000000001", device_id=device_id, occurred_at=utcnow(), received_at=utcnow(), event_type="MissionStarted", payload={"mission_id": "primer-result", "category_id": "math", "level_id": "basic_operations_1", "skill_id": "multiply_by_powers_of_ten", "variant_id": "multiply_by_10", "question_text": "6 × 10 = ?"}),
+            DeviceEvent(event_id="50000000-0000-4000-8000-000000000002", device_id=device_id, occurred_at=utcnow(), received_at=utcnow(), event_type="MissionSolved", payload={"mission_id": "primer-result", "category_id": "math", "level_id": "basic_operations_1", "skill_id": "multiply_by_powers_of_ten", "variant_id": "multiply_by_10", "attempt": 1, "visual_primer_applied": True, "visual_primer_skill_id": "visual_story.math.multiply_by_10_100_1000"}),
+            DeviceEvent(event_id="50000000-0000-4000-8000-000000000003", device_id=device_id, occurred_at=utcnow(), received_at=utcnow(), event_type="MissionSolved", payload={"mission_id": "ordinary-result", "category_id": "math", "level_id": "basic_operations_1", "skill_id": "addition", "attempt": 1}),
+        ])
+        db.commit()
+
+    response = client.get(f"/admin/devices/{device_id}/metrics?period=all&category=math&level=basic_operations_1&skill=multiply_by_powers_of_ten")
+    assert response.status_code == 200
+    assert response.text.count("/admin/static/help_video.png") == 1
+    assert "Respondida después de ver la ayuda visual" in response.text
+    icon = client.get("/admin/static/help_video.png")
+    assert icon.status_code == 200
+    assert icon.headers["content-type"].startswith("image/png")
 
 
 def test_configuration_update_controls_are_stable_and_reuse_update_command_flow():

@@ -41,6 +41,9 @@ ADMIN_ICON_VERSION = hashlib.sha256((Path(__file__).parent / "static" / "guardia
 templates.env.globals["admin_icon_version"] = ADMIN_ICON_VERSION
 
 MISSION_LEVELS = [
+    ("visual_story", "math_primer", "Visual Story matemática", "Microanimación breve sin preguntas ni respuestas.", [
+        ("visual_story.math.multiply_by_10_100_1000", "Multiplicar por 10, 100 y 1000", "Regla visual: los ceros después del uno pasan al final de 23."),
+    ]),
     ("math", "basic_operations_1", "Operaciones básicas", "Operaciones matemáticas básicas.", [
         ("math.basic_operations_1.addition", "Sumas", "Resolver sumas básicas."),
         ("math.basic_operations_1.subtraction", "Restas", "Resolver restas básicas."),
@@ -84,7 +87,7 @@ def is_device_online(device: Device) -> bool:
 
 
 EVENT_GROUPS = {
-    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionFailed", "MissionSolved"],
+    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionFailed", "MissionSolved", "VisualStoryStarted", "VisualStoryPrimerScheduled", "VisualStoryCompleted", "VisualStoryAudioLoading", "VisualStoryAudioStarted", "VisualStoryAudioCompleted", "VisualStoryAudioStopped", "VisualStoryAudioFailed"],
     "config": ["RemoteConfigFetched", "RemoteConfigReceived", "RemoteConfigApplied", "RemoteConfigFailed"],
     "updates": [
         "UpdateCommandReceived",
@@ -144,7 +147,7 @@ def to_admin_time(value: datetime | None):
 
 def event_summary(event: DeviceEvent) -> str:
     payload = event.payload or {}
-    if event.event_type in {"MissionStarted", "MissionFailed", "MissionSolved"}:
+    if event.event_type in {"MissionStarted", "MissionFailed", "MissionSolved", "VisualStoryStarted", "VisualStoryPrimerScheduled", "VisualStoryCompleted", "VisualStoryAudioLoading", "VisualStoryAudioStarted", "VisualStoryAudioCompleted", "VisualStoryAudioStopped", "VisualStoryAudioFailed"}:
         category = payload.get("category_id")
         level = payload.get("level_id")
         skill = payload.get("skill_id")
@@ -187,6 +190,10 @@ def event_summary(event: DeviceEvent) -> str:
 def event_label(event_type: str) -> str:
     labels = {
         "MissionStarted": "Misión iniciada", "MissionFailed": "Misión con reintento", "MissionSolved": "Misión resuelta",
+        "VisualStoryStarted": "Visual Story iniciada", "VisualStoryPrimerScheduled": "Visual Story programa misión siguiente", "VisualStoryCompleted": "Visual Story completada",
+        "VisualStoryAudioLoading": "Audio Visual Story cargando", "VisualStoryAudioStarted": "Audio Visual Story iniciado",
+        "VisualStoryAudioCompleted": "Audio Visual Story completado", "VisualStoryAudioStopped": "Audio Visual Story detenido",
+        "VisualStoryAudioFailed": "Audio Visual Story falló",
         "RemoteConfigApplied": "Configuración aplicada", "UpdateCompleted": "Actualización completada",
         "UpdateFailed": "Actualización fallida", "MonitoringPaused": "Misiones pausadas", "MonitoringResumed": "Misiones reanudadas",
     }
@@ -236,7 +243,14 @@ def active_device_command(db: Session, device_id: str) -> DeviceCommand | None:
 
 
 def supports_remote_controls(device: Device) -> bool:
-    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?", (device.client_version or "").strip())
+    version = (device.client_version or "").strip()
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?", version)
+    if settings.guardian_environment.strip().upper() == "STG" and re.fullmatch(r"\d+\.\d+\.\d+-staging-[0-9A-Za-z.-]+", version):
+        # STG usa su propia secuencia SemVer (por ejemplo 0.1.0-staging-*),
+        # independiente de la versión histórica que introdujo los controles.
+        # La capacidad está validada por la release STG, no por compararla con
+        # el número de la línea de producción.
+        return True
     return match is not None and tuple(int(part) for part in match.groups()) >= (0, 3, 2)
 
 

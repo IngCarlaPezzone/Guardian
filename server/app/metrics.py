@@ -12,6 +12,9 @@ from server.app.models import Device, DeviceEvent
 
 
 CATALOG = {
+    "visual_story": {"label": "Visual Story", "levels": {
+        "location": {"label": "Microhistoria", "skills": {"home": "Dónde vivís"}},
+    }},
     "math": {"label": "Matemática", "levels": {
         "basic_operations_1": {"label": "Operaciones básicas", "skills": {
             "addition": "Sumas", "subtraction": "Restas", "multiplication": "Multiplicaciones",
@@ -149,6 +152,7 @@ class MissionRecord:
     writing_correction_count: int | None = None
     writing_answer_revealed: bool | None = None
     question_text: str | None = None
+    visual_primer_applied: bool = False
     events: list[DeviceEvent] | None = None
 
     def __post_init__(self):
@@ -238,6 +242,8 @@ def mission_records(events: list[DeviceEvent]) -> list[MissionRecord]:
             record.writing_correction_count = integer_or_none(payload["writing_correction_count"])
         if "writing_answer_revealed" in payload:
             record.writing_answer_revealed = boolean_or_none(payload["writing_answer_revealed"])
+        if boolean_or_none(payload.get("visual_primer_applied")) is True:
+            record.visual_primer_applied = True
     return [record for record in records.values() if record.solved_at is not None]
 
 
@@ -527,6 +533,7 @@ def execution_detail(record: MissionRecord, tz: tzinfo) -> dict:
         "attempts": attempts,
         "max_help_label": help_text,
         "orthographic_support": record.orthographic_support,
+        "visual_primer_applied": record.visual_primer_applied,
         "timeline": timeline,
     }
 

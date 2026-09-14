@@ -44,6 +44,18 @@ namespace Guardian
                     NativeConsole.Attach();
                     return SelfTest.Run();
                 }
+                if (command.Has("--visual-story-preview") || !string.IsNullOrWhiteSpace(command.Value("--visual-story-capture")))
+                {
+                    return VisualStoryPreview.Run(command);
+                }
+                if (command.Has("--visual-story-interruption-preview"))
+                {
+                    if (string.IsNullOrWhiteSpace(requestedHome))
+                    {
+                        Environment.SetEnvironmentVariable("GUARDIAN_HOME", Path.Combine(Path.GetTempPath(), "Guardian-VisualStory-Interruption-Preview"), EnvironmentVariableTarget.Process);
+                    }
+                    return VisualStoryInterruptionPreview.Run();
+                }
                 if (command.Has("--install-startup"))
                 {
                     NativeConsole.Attach();
@@ -949,6 +961,7 @@ namespace Guardian
         private bool _suspended;
         private bool _missionActive;
         private LockWindow _lockWindow;
+        private VisualStoryWindow _visualStoryWindow;
         private MediaInterruptionSession _mediaSession;
         private GuardianTray _tray;
         private bool _monitoringEnabled;
@@ -1037,6 +1050,12 @@ namespace Guardian
                 _lockWindow.Close();
                 _lockWindow = null;
             }
+            if (_visualStoryWindow != null)
+            {
+                _visualStoryWindow.AllowProgrammaticClose();
+                _visualStoryWindow.Close();
+                _visualStoryWindow = null;
+            }
             _logger.Log("UsageCounterPaused", new Dictionary<string, object> { { "reason", reason } });
             _logger.Log("MonitoringPaused", new Dictionary<string, object>
             {
@@ -1107,7 +1126,17 @@ namespace Guardian
             }
             _missionUnavailableDeduplicator.ShouldLog(true, availabilitySignature);
             _missionActive = true;
-            _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger);
+            _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger, string.Equals(mission.CategoryId, VisualStoryDefinition.CategoryId, StringComparison.Ordinal));
+            if (string.Equals(mission.CategoryId, VisualStoryDefinition.CategoryId, StringComparison.Ordinal))
+            {
+                ShowVisualStory(mission, trigger);
+                return;
+            }
+            ShowLockMission(mission, trigger);
+        }
+
+        private void ShowLockMission(Mission mission, MissionTrigger trigger)
+        {
             _lockWindow = new LockWindow(mission, _config, _logger);
             var startedPayload = MissionTelemetry.StartedPayload(mission, _lockWindow.QuestionText);
             startedPayload["elapsedSeconds"] = _counter.ElapsedSeconds;
@@ -1134,6 +1163,50 @@ namespace Guardian
             };
             _lockWindow.Show();
             _lockWindow.Activate();
+        }
+
+        private void ShowVisualStory(Mission mission, MissionTrigger trigger)
+        {
+            _visualStoryWindow = new VisualStoryWindow(mission, _config, _logger);
+            var startedPayload = MissionTelemetry.StartedPayload(mission, _visualStoryWindow.QuestionText);
+            startedPayload["elapsedSeconds"] = _counter.ElapsedSeconds;
+            startedPayload["trigger"] = trigger.ToString().ToLowerInvariant();
+            _logger.Log("MissionStarted", startedPayload);
+            var visualStartedPayload = VisualStoryDefinition.Telemetry(mission);
+            visualStartedPayload["trigger"] = trigger.ToString().ToLowerInvariant();
+            _logger.Log("VisualStoryStarted", visualStartedPayload);
+            if (string.Equals(_config.MissionRotationState.PendingPrimerSkill, VisualStoryDefinition.PrimerTargetSkillKey, StringComparison.Ordinal))
+            {
+                var primerPayload = VisualStoryDefinition.Telemetry(mission);
+                primerPayload["target_skill_id"] = VisualStoryDefinition.PrimerTargetSkillKey;
+                _logger.Log("VisualStoryPrimerScheduled", primerPayload);
+            }
+            _logger.Log("DeviceLocked", new Dictionary<string, object> { { "missionId", mission.Id } });
+
+            _visualStoryWindow.StoryCompleted += delegate
+            {
+                _logger.Log("VisualStoryCompleted", VisualStoryDefinition.Telemetry(mission));
+                if (string.Equals(_config.MissionRotationState.PendingPrimerSkill, VisualStoryDefinition.PrimerTargetSkillKey, StringComparison.Ordinal))
+                {
+                    _config.MissionRotationState.PendingPrimerCompleted = true;
+                    _config.Save();
+                }
+            };
+            _visualStoryWindow.UnlockRequested += delegate
+            {
+                _counter.Reset();
+                _missionActive = false;
+                _logger.Log("DeviceUnlocked", new Dictionary<string, object> { { "missionId", mission.Id } });
+                if (_mediaSession != null) { _mediaSession.Dispose(); _mediaSession = null; }
+                _visualStoryWindow = null;
+            };
+            _visualStoryWindow.AdminShutdownRequested += delegate
+            {
+                _logger.Log("AdminShutdownRequested", new Dictionary<string, object> { { "missionId", mission.Id }, { "behavior", "stop_monitoring" } });
+                StopMonitoring("admin_exit_from_visual_story");
+            };
+            _visualStoryWindow.Show();
+            _visualStoryWindow.Activate();
         }
 
         private string MissionAvailabilitySignature()
@@ -1436,6 +1509,8 @@ namespace Guardian
                 _tray.Dispose();
                 _tray = null;
             }
+            if (_lockWindow != null) { _lockWindow.AllowProgrammaticClose(); _lockWindow.Close(); _lockWindow = null; }
+            if (_visualStoryWindow != null) { _visualStoryWindow.AllowProgrammaticClose(); _visualStoryWindow.Close(); _visualStoryWindow = null; }
             _timer.Stop();
             _remoteConfigTimer.Stop();
             SystemEvents.SessionSwitch -= OnSessionSwitch;
@@ -1454,6 +1529,16 @@ namespace Guardian
         public static bool ShouldRequestPlayPause(GuardianConfig config, MissionTrigger trigger)
         {
             return config != null && config.PauseMediaOnMission && config.AllowUnsafeMediaToggle && trigger == MissionTrigger.Timer;
+        }
+
+        // La narración de una Visual Story no puede convivir con el audio de un
+        // reproductor externo. A diferencia del mute global (que también
+        // silenciaría a Guardian), el control multimedia intenta pausar el
+        // reproductor activo antes de abrir la story. Sólo se usa en disparos
+        // automáticos: el preview/manual nunca altera la reproducción ajena.
+        public static bool ShouldPauseExternalMediaForVisualStory(MissionTrigger trigger)
+        {
+            return trigger == MissionTrigger.Timer;
         }
 
         public static bool ShouldResumeMedia(GuardianConfig config)
@@ -1478,14 +1563,24 @@ namespace Guardian
             _muteScope = muteScope;
         }
 
-        public static MediaInterruptionSession Start(GuardianConfig config, EventLogger logger, string missionId, MissionTrigger trigger)
+        public static MediaInterruptionSession Start(GuardianConfig config, EventLogger logger, string missionId, MissionTrigger trigger, bool preserveVisualStoryAudio)
         {
-            if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, trigger))
+            var isVisualStoryPause = preserveVisualStoryAudio && MediaInterruptionPolicy.ShouldPauseExternalMediaForVisualStory(trigger);
+            if (isVisualStoryPause || MediaInterruptionPolicy.ShouldRequestPlayPause(config, trigger))
             {
                 try
                 {
-                    MediaKeys.SendPlayPause();
-                    logger.Log("MediaPauseRequested", new Dictionary<string, object> { { "missionId", missionId } });
+                    var mediaCommand = isVisualStoryPause ? "pause" : "play_pause";
+                    var dispatched = isVisualStoryPause
+                        ? MediaKeys.SendPauseToForegroundApp()
+                        : MediaKeys.SendPlayPause();
+                    logger.Log("MediaPauseRequested", new Dictionary<string, object>
+                    {
+                        { "missionId", missionId },
+                        { "reason", isVisualStoryPause ? "visual_story_external_media" : "configured_media_pause" },
+                        { "media_command", mediaCommand },
+                        { "command_dispatched", dispatched }
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -1507,7 +1602,7 @@ namespace Guardian
             }
 
             SystemAudioMuteScope muteScope = null;
-            if (config.MuteSystemAudioDuringMission)
+            if (ShouldMuteSystemAudio(config, preserveVisualStoryAudio))
             {
                 try
                 {
@@ -1523,8 +1618,22 @@ namespace Guardian
                     });
                 }
             }
+            else if (config.MuteSystemAudioDuringMission && preserveVisualStoryAudio)
+            {
+                logger.Log("SystemAudioMuteSkipped", new Dictionary<string, object>
+                {
+                    { "missionId", missionId },
+                    { "reason", "visual_story_owns_narration" },
+                    { "audio_output", "default_multimedia_endpoint" }
+                });
+            }
 
             return new MediaInterruptionSession(config, logger, missionId, muteScope);
+        }
+
+        public static bool ShouldMuteSystemAudio(GuardianConfig config, bool preserveVisualStoryAudio)
+        {
+            return config != null && config.MuteSystemAudioDuringMission && !preserveVisualStoryAudio;
         }
 
         public void Dispose()
@@ -1558,15 +1667,38 @@ namespace Guardian
     {
         private const byte VkMediaPlayPause = 0xB3;
         private const int KeyeventfKeyup = 0x0002;
+        private const uint WmAppCommand = 0x0319;
+        private const int AppCommandMediaPause = 47;
+        private const uint SmtoAbortIfHung = 0x0002;
 
         [DllImport("user32.dll")]
         private static extern void keybd_event(byte bVk, byte bScan, int dwFlags, UIntPtr dwExtraInfo);
 
-        public static void SendPlayPause()
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+
+        public static bool SendPlayPause()
         {
             keybd_event(VkMediaPlayPause, 0, 0, UIntPtr.Zero);
             Thread.Sleep(40);
             keybd_event(VkMediaPlayPause, 0, KeyeventfKeyup, UIntPtr.Zero);
+            return true;
+        }
+
+        // A diferencia de la tecla global Play/Pause, este comando no invierte
+        // el estado del reproductor: una pestaña ya pausada permanece pausada.
+        // Se dirige a la aplicación que estaba en primer plano antes de que
+        // Guardian muestre su ventana de bloqueo.
+        public static bool SendPauseToForegroundApp()
+        {
+            var target = GetForegroundWindow();
+            if (target == IntPtr.Zero) return false;
+            IntPtr result;
+            var command = new IntPtr(AppCommandMediaPause << 16);
+            return SendMessageTimeout(target, WmAppCommand, target, command, SmtoAbortIfHung, 500, out result) != IntPtr.Zero;
         }
     }
 
@@ -1651,6 +1783,23 @@ namespace Guardian
             Marshal.ReleaseComObject(device);
             Marshal.ReleaseComObject(enumerator);
             return (IAudioEndpointVolume)endpoint;
+        }
+
+        public static bool IsDefaultEndpointMuted()
+        {
+            IAudioEndpointVolume endpoint = null;
+            try
+            {
+                endpoint = GetDefaultEndpointVolume();
+                bool muted;
+                endpoint.GetMute(out muted);
+                return muted;
+            }
+            catch { return false; }
+            finally
+            {
+                if (endpoint != null) Marshal.ReleaseComObject(endpoint);
+            }
         }
     }
 
@@ -3365,6 +3514,7 @@ namespace Guardian
             CheckMissionHelpProgression(failures);
             CheckMissionRotationAndComprehension(failures);
             CheckNewMissionSkills(failures);
+            CheckVisualStory(failures);
             CheckMissionUnavailableDeduplication(failures);
             CheckAdminAuth(failures);
             CheckMediaPolicy(failures);
@@ -3512,12 +3662,17 @@ namespace Guardian
             config.ResumeMediaAfterMission = false;
             if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, MissionTrigger.Timer)) failures.Add("default timer mission must not toggle media playback");
             if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, MissionTrigger.Manual)) failures.Add("manual tray mission must not toggle media playback");
+            if (!MediaInterruptionPolicy.ShouldPauseExternalMediaForVisualStory(MissionTrigger.Timer)) failures.Add("timer visual story must pause external media");
+            if (MediaInterruptionPolicy.ShouldPauseExternalMediaForVisualStory(MissionTrigger.Manual)) failures.Add("manual visual story preview must not pause external media");
             if (MediaInterruptionPolicy.ShouldResumeMedia(config)) failures.Add("media resume should be disabled by default");
             config.PauseMediaOnMission = true;
             config.AllowUnsafeMediaToggle = false;
             if (MediaInterruptionPolicy.ShouldRequestPlayPause(config, MissionTrigger.Timer)) failures.Add("unsafe media toggle must require explicit opt-in");
             config.AllowUnsafeMediaToggle = true;
             if (!MediaInterruptionPolicy.ShouldRequestPlayPause(config, MissionTrigger.Timer)) failures.Add("explicit unsafe media toggle should allow timer play/pause");
+            config.MuteSystemAudioDuringMission = true;
+            if (!MediaInterruptionSession.ShouldMuteSystemAudio(config, false)) failures.Add("ordinary missions must keep the configured system audio mute");
+            if (MediaInterruptionSession.ShouldMuteSystemAudio(config, true)) failures.Add("visual story narration must not be muted by the system audio scope");
         }
 
         private static void CheckUsageCounter(List<string> failures)
@@ -3701,6 +3856,34 @@ namespace Guardian
             deduplicator.ShouldLog(true, "has-skills");
             if (!deduplicator.ShouldLog(false, "no-skills")) failures.Add("unavailable state after recovery should log again");
             if (!deduplicator.ShouldLog(false, "different-config")) failures.Add("changed unavailable configuration should log again");
+        }
+
+        private static void CheckVisualStory(List<string> failures)
+        {
+            var config = GuardianConfig.Default();
+            config.MissionConfig.EnabledSkills = new List<string> { VisualStoryDefinition.SkillKey };
+            var catalog = new MissionCatalog();
+            var effective = catalog.EffectiveSkills(config.MissionConfig);
+            if (effective.Count != 1 || effective[0] != VisualStoryDefinition.SkillKey) failures.Add("visual story must be independently selectable");
+            var mission = catalog.Generate(VisualStoryDefinition.SkillKey, new PrivateMissionProfile(), new Dictionary<string, string>(), new Random(1));
+            if (mission == null || mission.CategoryId != VisualStoryDefinition.CategoryId || mission.AcceptedAnswers.Count != 0) failures.Add("visual story mission shape failed");
+            var payload = VisualStoryDefinition.Telemetry(mission);
+            if (!payload.ContainsKey("mission_id") || (double)payload["duration_seconds"] < 15 || (double)payload["duration_seconds"] > 20) failures.Add("visual story telemetry or duration failed");
+            config.MissionConfig.EnabledSkills = new List<string> { VisualStoryDefinition.SkillKey, VisualStoryDefinition.PrimerTargetSkillKey };
+            var selector = new MissionSelector(config, catalog);
+            var primer = selector.Next();
+            var pendingSkill = config.MissionRotationState.PendingPrimerSkill;
+            config.MissionRotationState.PendingPrimerCompleted = true;
+            var followUp = selector.Next();
+            if (!VisualStoryDefinition.IsPrimerEnabled(config.MissionConfig) || primer == null || primer.SkillId != VisualStoryDefinition.SkillId || pendingSkill != VisualStoryDefinition.PrimerTargetSkillKey || followUp == null || followUp.SkillId != "multiply_by_powers_of_ten" || followUp.VisualPrimerSkillId != VisualStoryDefinition.SkillKey) failures.Add("visual story primer must schedule and mark its powers-of-ten mission for the next interval");
+            var primerPayload = MissionTelemetry.Payload(followUp, 1);
+            if (!primerPayload.ContainsKey("visual_primer_applied") || !primerPayload.ContainsKey("visual_primer_skill_id")) failures.Add("visual story primer telemetry marker failed");
+            var resources = new HashSet<string>(Assembly.GetExecutingAssembly().GetManifestResourceNames());
+            foreach (var asset in new[] { "guardian-number-0.png", "guardian-number-1.png", "guardian-number-2.png", "guardian-number-3.png", "guardian-number-4.png", "guardian-number-5.png", "guardian-number-6.png", "guardian-number-7.png", "guardian-number-8.png", "guardian-number-9.png", "guardian-sign-multiply.png", "guardian-sign-equals.png", "guardian-sign-question.png", "hint.png", "think.png" })
+            {
+                if (!resources.Contains("Guardian.Assets.Icons." + asset)) failures.Add("guardian visual asset missing: " + asset);
+            }
+            if (!File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Audio", "multiply-by-10-100-1000.mp3"))) failures.Add("visual story MP3 missing from build output");
         }
 
         private static void CheckConfig(List<string> failures)
