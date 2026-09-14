@@ -87,7 +87,7 @@ def is_device_online(device: Device) -> bool:
 
 
 EVENT_GROUPS = {
-    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionFailed", "MissionSolved", "VisualStoryStarted", "VisualStoryCompleted", "VisualStoryAudioLoading", "VisualStoryAudioStarted", "VisualStoryAudioCompleted", "VisualStoryAudioStopped", "VisualStoryAudioFailed"],
+    "missions": ["MissionStarted", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionFailed", "MissionSolved", "VisualStoryStarted", "VisualStoryPrimerScheduled", "VisualStoryCompleted", "VisualStoryAudioLoading", "VisualStoryAudioStarted", "VisualStoryAudioCompleted", "VisualStoryAudioStopped", "VisualStoryAudioFailed"],
     "config": ["RemoteConfigFetched", "RemoteConfigReceived", "RemoteConfigApplied", "RemoteConfigFailed"],
     "updates": [
         "UpdateCommandReceived",
@@ -147,7 +147,7 @@ def to_admin_time(value: datetime | None):
 
 def event_summary(event: DeviceEvent) -> str:
     payload = event.payload or {}
-    if event.event_type in {"MissionStarted", "MissionFailed", "MissionSolved", "VisualStoryStarted", "VisualStoryCompleted", "VisualStoryAudioLoading", "VisualStoryAudioStarted", "VisualStoryAudioCompleted", "VisualStoryAudioStopped", "VisualStoryAudioFailed"}:
+    if event.event_type in {"MissionStarted", "MissionFailed", "MissionSolved", "VisualStoryStarted", "VisualStoryPrimerScheduled", "VisualStoryCompleted", "VisualStoryAudioLoading", "VisualStoryAudioStarted", "VisualStoryAudioCompleted", "VisualStoryAudioStopped", "VisualStoryAudioFailed"}:
         category = payload.get("category_id")
         level = payload.get("level_id")
         skill = payload.get("skill_id")
@@ -190,7 +190,7 @@ def event_summary(event: DeviceEvent) -> str:
 def event_label(event_type: str) -> str:
     labels = {
         "MissionStarted": "Misión iniciada", "MissionFailed": "Misión con reintento", "MissionSolved": "Misión resuelta",
-        "VisualStoryStarted": "Visual Story iniciada", "VisualStoryCompleted": "Visual Story completada",
+        "VisualStoryStarted": "Visual Story iniciada", "VisualStoryPrimerScheduled": "Visual Story programa misión siguiente", "VisualStoryCompleted": "Visual Story completada",
         "VisualStoryAudioLoading": "Audio Visual Story cargando", "VisualStoryAudioStarted": "Audio Visual Story iniciado",
         "VisualStoryAudioCompleted": "Audio Visual Story completado", "VisualStoryAudioStopped": "Audio Visual Story detenido",
         "VisualStoryAudioFailed": "Audio Visual Story falló",

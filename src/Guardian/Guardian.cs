@@ -56,14 +56,6 @@ namespace Guardian
                     }
                     return VisualStoryInterruptionPreview.Run();
                 }
-                if (command.Has("--visual-story-primer-preview"))
-                {
-                    if (string.IsNullOrWhiteSpace(requestedHome))
-                    {
-                        Environment.SetEnvironmentVariable("GUARDIAN_HOME", Path.Combine(Path.GetTempPath(), "Guardian-VisualStory-Primer-Preview"), EnvironmentVariableTarget.Process);
-                    }
-                    return VisualStoryPrimerPreview.Run();
-                }
                 if (command.Has("--install-startup"))
                 {
                     NativeConsole.Attach();
@@ -976,7 +968,6 @@ namespace Guardian
         private readonly MissionUnavailableDeduplicator _missionUnavailableDeduplicator = new MissionUnavailableDeduplicator();
 
         public Window MainWindow { get; private set; }
-        public event Action MissionFlowCompleted;
 
         public GuardianController(GuardianConfig config, EventLogger logger)
         {
@@ -1135,15 +1126,10 @@ namespace Guardian
             }
             _missionUnavailableDeduplicator.ShouldLog(true, availabilitySignature);
             _missionActive = true;
-            Mission primerTarget = null;
-            if (string.Equals(mission.CategoryId, VisualStoryDefinition.CategoryId, StringComparison.Ordinal) && VisualStoryDefinition.IsPrimerEnabled(_config.MissionConfig))
-            {
-                primerTarget = _missionSelector.NextForSkill(VisualStoryDefinition.PrimerTargetSkillKey);
-            }
             _mediaSession = MediaInterruptionSession.Start(_config, _logger, mission.Id, trigger, string.Equals(mission.CategoryId, VisualStoryDefinition.CategoryId, StringComparison.Ordinal));
             if (string.Equals(mission.CategoryId, VisualStoryDefinition.CategoryId, StringComparison.Ordinal))
             {
-                ShowVisualStory(mission, trigger, primerTarget);
+                ShowVisualStory(mission, trigger);
                 return;
             }
             ShowLockMission(mission, trigger);
@@ -1169,7 +1155,6 @@ namespace Guardian
                     _mediaSession = null;
                 }
                 _lockWindow = null;
-                if (MissionFlowCompleted != null) MissionFlowCompleted();
             };
             _lockWindow.AdminShutdownRequested += delegate
             {
@@ -1180,9 +1165,9 @@ namespace Guardian
             _lockWindow.Activate();
         }
 
-        private void ShowVisualStory(Mission mission, MissionTrigger trigger, Mission primerTarget)
+        private void ShowVisualStory(Mission mission, MissionTrigger trigger)
         {
-            _visualStoryWindow = new VisualStoryWindow(mission, _config, _logger, primerTarget != null);
+            _visualStoryWindow = new VisualStoryWindow(mission, _config, _logger);
             var startedPayload = MissionTelemetry.StartedPayload(mission, _visualStoryWindow.QuestionText);
             startedPayload["elapsedSeconds"] = _counter.ElapsedSeconds;
             startedPayload["trigger"] = trigger.ToString().ToLowerInvariant();
@@ -1190,6 +1175,12 @@ namespace Guardian
             var visualStartedPayload = VisualStoryDefinition.Telemetry(mission);
             visualStartedPayload["trigger"] = trigger.ToString().ToLowerInvariant();
             _logger.Log("VisualStoryStarted", visualStartedPayload);
+            if (string.Equals(_config.MissionRotationState.PendingPrimerSkill, VisualStoryDefinition.PrimerTargetSkillKey, StringComparison.Ordinal))
+            {
+                var primerPayload = VisualStoryDefinition.Telemetry(mission);
+                primerPayload["target_skill_id"] = VisualStoryDefinition.PrimerTargetSkillKey;
+                _logger.Log("VisualStoryPrimerScheduled", primerPayload);
+            }
             _logger.Log("DeviceLocked", new Dictionary<string, object> { { "missionId", mission.Id } });
 
             _visualStoryWindow.StoryCompleted += delegate
@@ -1198,27 +1189,11 @@ namespace Guardian
             };
             _visualStoryWindow.UnlockRequested += delegate
             {
-                if (primerTarget != null)
-                {
-                    var primerPayload = VisualStoryDefinition.Telemetry(mission);
-                    primerPayload["target_mission_id"] = primerTarget.Id;
-                    primerPayload["target_skill_id"] = primerTarget.SkillId;
-                    _logger.Log("VisualStoryPrimerContinued", primerPayload);
-                    if (_mediaSession != null) { _mediaSession.Dispose(); _mediaSession = null; }
-                    _visualStoryWindow = null;
-                    Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(delegate
-                    {
-                        _mediaSession = MediaInterruptionSession.Start(_config, _logger, primerTarget.Id, trigger, false);
-                        ShowLockMission(primerTarget, trigger);
-                    }));
-                    return;
-                }
                 _counter.Reset();
                 _missionActive = false;
                 _logger.Log("DeviceUnlocked", new Dictionary<string, object> { { "missionId", mission.Id } });
                 if (_mediaSession != null) { _mediaSession.Dispose(); _mediaSession = null; }
                 _visualStoryWindow = null;
-                if (MissionFlowCompleted != null) MissionFlowCompleted();
             };
             _visualStoryWindow.AdminShutdownRequested += delegate
             {
@@ -3847,8 +3822,9 @@ namespace Guardian
             config.MissionConfig.EnabledSkills = new List<string> { VisualStoryDefinition.SkillKey, VisualStoryDefinition.PrimerTargetSkillKey };
             var selector = new MissionSelector(config, catalog);
             var primer = selector.Next();
-            var followUp = selector.NextForSkill(VisualStoryDefinition.PrimerTargetSkillKey);
-            if (!VisualStoryDefinition.IsPrimerEnabled(config.MissionConfig) || primer == null || primer.SkillId != VisualStoryDefinition.SkillId || followUp == null || followUp.SkillId != "multiply_by_powers_of_ten") failures.Add("visual story primer must precede its powers-of-ten mission");
+            var pendingSkill = config.MissionRotationState.PendingPrimerSkill;
+            var followUp = selector.Next();
+            if (!VisualStoryDefinition.IsPrimerEnabled(config.MissionConfig) || primer == null || primer.SkillId != VisualStoryDefinition.SkillId || pendingSkill != VisualStoryDefinition.PrimerTargetSkillKey || followUp == null || followUp.SkillId != "multiply_by_powers_of_ten") failures.Add("visual story primer must schedule its powers-of-ten mission for the next interval");
             var resources = new HashSet<string>(Assembly.GetExecutingAssembly().GetManifestResourceNames());
             foreach (var asset in new[] { "guardian-number-0.png", "guardian-number-1.png", "guardian-number-2.png", "guardian-number-3.png", "guardian-number-4.png", "guardian-number-5.png", "guardian-number-6.png", "guardian-number-7.png", "guardian-number-8.png", "guardian-number-9.png", "guardian-sign-multiply.png", "guardian-sign-equals.png", "guardian-sign-question.png", "hint.png", "think.png" })
             {

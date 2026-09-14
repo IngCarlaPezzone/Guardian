@@ -576,7 +576,6 @@ namespace Guardian
         private readonly DispatcherTimer _timer;
         private readonly Stopwatch _clock = new Stopwatch();
         private readonly VisualStoryMp3Player _narrator;
-        private readonly bool _continuesToMission;
         private double _storyDuration = VisualStoryDefinition.DurationSeconds;
         private bool _completed;
         private bool _unlockRequested;
@@ -585,10 +584,9 @@ namespace Guardian
         public event Action AdminShutdownRequested;
         public event Action StoryCompleted;
 
-        public VisualStoryWindow(Mission mission, GuardianConfig config, EventLogger logger, bool continuesToMission = false)
+        public VisualStoryWindow(Mission mission, GuardianConfig config, EventLogger logger)
         {
             _mission = mission; _config = config; _logger = logger;
-            _continuesToMission = continuesToMission;
             _narrator = new VisualStoryMp3Player(logger, mission);
             _narrator.DurationAvailable += delegate(double seconds) { _storyDuration = seconds + .85; _surface.DurationSeconds = _storyDuration; if (!_completed) { _clock.Restart(); _timer.Start(); } };
             Title = "Guardian — " + VisualStoryDefinition.Title;
@@ -597,7 +595,7 @@ namespace Guardian
             var root = new Grid();
             _surface = new MultiplyBy100StorySurface(); root.Children.Add(_surface);
 
-            _exitButton = MakeButton(_continuesToMission ? "CONTINUAR" : "SALIR", _continuesToMission ? 132 : 108, 42);
+            _exitButton = MakeButton("SALIR", 108, 42);
             _exitButton.HorizontalAlignment = HorizontalAlignment.Right; _exitButton.VerticalAlignment = VerticalAlignment.Top;
             _exitButton.Margin = new Thickness(0, 24, 28, 0); _exitButton.Visibility = Visibility.Hidden;
             _exitButton.Click += delegate { RequestUnlock(); }; root.Children.Add(_exitButton);
@@ -748,24 +746,6 @@ namespace Guardian
             window.Closed += delegate { media.Dispose(); };
             app.MainWindow = window;
             window.Show();
-            return app.Run();
-        }
-    }
-
-    // Preview DEV del flujo completo: el mismo GuardianController selecciona el
-    // primer visual y después abre la misión matemática enlazada.
-    public static class VisualStoryPrimerPreview
-    {
-        public static int Run()
-        {
-            var config = GuardianConfig.Default();
-            config.MissionConfig.EnabledSkills = new List<string> { VisualStoryDefinition.SkillKey, VisualStoryDefinition.PrimerTargetSkillKey };
-            config.MuteSystemAudioDuringMission = true;
-            config.PauseMediaOnMission = false;
-            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            var controller = new GuardianController(config, new EventLogger(config));
-            controller.MissionFlowCompleted += delegate { app.Shutdown(0); };
-            controller.TriggerMissionNow();
             return app.Run();
         }
     }

@@ -8,10 +8,11 @@ misiones, RemoteConfig, intervalo/test interval, bloqueo, pausa de multimedia
 externa, telemetría y salida de Guardian. Matemática y Comprensión no cambian.
 
 Cuando están habilitadas juntas Visual Story y la habilidad matemática
-`multiply_by_powers_of_ten`, ambas forman una única interrupción encadenada:
-la story termina con **CONTINUAR** y abre inmediatamente la misión matemática
-correspondiente, sin desbloquear Guardian entre ambas. Si sólo se habilita
-Visual Story, conserva el comportamiento independiente con **SALIR**.
+`multiply_by_powers_of_ten`, Guardian las encadena en dos intervalos normales:
+cuando el selector elige esa habilidad muestra primero la story y se cierra con
+**SALIR**. La multiplicación real queda pendiente para el próximo intervalo;
+Guardian se desbloquea entre ambas. Si sólo se habilita Visual Story, conserva
+el comportamiento independiente.
 
 - Skill: `visual_story.math.multiply_by_10_100_1000`
 - Categoría / nivel: `visual_story` / `math_primer`
@@ -87,15 +88,6 @@ servidor:
 .\dist\Guardian.exe --visual-story-interruption-preview
 ```
 
-Para validar localmente el encadenamiento completo de primer + misión real:
-
-```powershell
-.\dist\Guardian.exe --visual-story-primer-preview
-```
-
-Ese comando activa sólo esta Visual Story y `multiply_by_powers_of_ten` en un
-home temporal, muestra **CONTINUAR** al final y cierra al resolver la misión.
-
 ## Validación STG manual
 
 No ejecutar en PROD ni en un dispositivo productivo.
@@ -107,13 +99,14 @@ No ejecutar en PROD ni en un dispositivo productivo.
    por 10, 100 y 1000**. Para validar el encadenamiento, desmarcar las demás
    habilidades.
 4. Guardar, esperar RemoteConfig o usar **Probar misión ahora**.
-5. Confirmar bloqueo, animación, narración audible y ausencia de interacción.
-6. Al finalizar, confirmar que aparece **CONTINUAR**, se abre una multiplicación
-   real por 10, 100 o 1000 y Guardian no se desbloquea entre ambas.
-7. Resolver o salir de la misión matemática y confirmar entonces el desbloqueo.
+5. En el primer intervalo, confirmar bloqueo, animación, narración audible,
+   ausencia de interacción y **SALIR** al final.
+6. Confirmar que Guardian se desbloquea al cerrar la story y que no se abre una
+   multiplicación inmediatamente.
+7. Esperar el siguiente intervalo de prueba: debe aparecer una multiplicación
+   real por 10, 100 o 1000. Resolverla y confirmar el desbloqueo normal.
 8. En Activity, verificar que se registren
    `VisualStoryStarted`, `VisualStoryAudioStarted`,
    `VisualStoryAudioCompleted`, `VisualStoryCompleted`,
-   `VisualStoryPrimerContinued` y los eventos de la misión matemática.
-9. Dejar pasar un intervalo de prueba completo para confirmar el disparo por
-   timer.
+   `VisualStoryPrimerScheduled` y, en el segundo intervalo, los eventos de la
+   misión matemática.

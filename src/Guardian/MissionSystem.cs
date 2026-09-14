@@ -107,6 +107,7 @@ namespace Guardian
         public string LocalDate { get; set; }
         public List<string> UsedSkillsInCycle { get; set; }
         public Dictionary<string, string> LastVariantBySkill { get; set; }
+        public string PendingPrimerSkill { get; set; }
         public MissionRotationState() { UsedSkillsInCycle = new List<string>(); LastVariantBySkill = new Dictionary<string, string>(); }
     }
 
@@ -219,28 +220,38 @@ namespace Guardian
             var state = _config.MissionRotationState; var today = GuardianClock.TodayLocal.ToString("yyyy-MM-dd");
             if (state.LocalDate != today) { state.LocalDate = today; state.UsedSkillsInCycle.Clear(); }
             var effective = _catalog.EffectiveSkills(_config.MissionConfig);
-            // La habilidad objetivo no aparece sola mientras su primer visual está activo:
-            // ambos elementos se reproducen como una única interrupción encadenada.
-            if (VisualStoryDefinition.IsPrimerEnabled(_config.MissionConfig)) effective.Remove(VisualStoryDefinition.PrimerTargetSkillKey);
+            if (effective.Count == 0) { _config.Save(); return null; }
+            var primerEnabled = VisualStoryDefinition.IsPrimerEnabled(_config.MissionConfig);
+            if (primerEnabled && !string.IsNullOrWhiteSpace(state.PendingPrimerSkill))
+            {
+                var pendingSkill = state.PendingPrimerSkill;
+                state.PendingPrimerSkill = null;
+                if (effective.Contains(pendingSkill))
+                {
+                    var pendingMission = _catalog.Generate(pendingSkill, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
+                    if (pendingMission != null)
+                    {
+                        state.UsedSkillsInCycle.Add(pendingSkill); state.LastVariantBySkill[pendingSkill] = pendingMission.VariantId; _config.Save(); return pendingMission;
+                    }
+                }
+            }
+            if (primerEnabled) effective.Remove(VisualStoryDefinition.SkillKey);
             if (effective.Count == 0) { _config.Save(); return null; }
             state.UsedSkillsInCycle.RemoveAll(delegate(string x) { return !effective.Contains(x); });
             var candidates = effective.FindAll(delegate(string x) { return !state.UsedSkillsInCycle.Contains(x); });
             if (candidates.Count == 0) { state.UsedSkillsInCycle.Clear(); candidates.AddRange(effective); }
             var key = candidates[_random.Next(candidates.Count)];
+            if (primerEnabled && string.Equals(key, VisualStoryDefinition.PrimerTargetSkillKey, StringComparison.Ordinal))
+            {
+                var visualMission = _catalog.Generate(VisualStoryDefinition.SkillKey, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
+                if (visualMission == null) return null;
+                state.UsedSkillsInCycle.Add(key); state.PendingPrimerSkill = key; state.LastVariantBySkill[VisualStoryDefinition.SkillKey] = visualMission.VariantId; _config.Save(); return visualMission;
+            }
             var mission = _catalog.Generate(key, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
             if (mission == null) return null;
             state.UsedSkillsInCycle.Add(key); state.LastVariantBySkill[key] = mission.VariantId; _config.Save(); return mission;
         }
 
-        public Mission NextForSkill(string key)
-        {
-            if (string.IsNullOrWhiteSpace(key) || !_catalog.CanGenerate(key, _config.MissionConfig.PrivateProfile)) return null;
-            var state = _config.MissionRotationState;
-            var mission = _catalog.Generate(key, _config.MissionConfig.PrivateProfile, state.LastVariantBySkill, _random);
-            if (mission == null) return null;
-            state.UsedSkillsInCycle.Add(key); state.LastVariantBySkill[key] = mission.VariantId; _config.Save();
-            return mission;
-        }
     }
 
     public sealed class MissionCatalog
