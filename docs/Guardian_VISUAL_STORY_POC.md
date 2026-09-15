@@ -64,6 +64,37 @@ diagnóstico son `VisualStoryAudioLoading`, `VisualStoryAudioStarted`,
 `VisualStoryAudioCompleted`, `VisualStoryAudioStopped` y
 `VisualStoryAudioFailed`.
 
+## Resolución de instalación de assets y promoción `0.4.12`
+
+Durante una promoción anterior, una instalación que todavía ejecutaba un
+`GuardianUpdater` legado pudo reemplazar `Guardian.exe`, pero no copió la
+carpeta `Assets`. Como la narración MP3 era un archivo auxiliar, `MediaPlayer`
+no logró abrirla; la story quedó en su fondo inicial porque el reloj visual sólo
+arranca después de `VisualStoryAudioStarted`.
+
+La corrección incorporada en `0.4.12` cubre tanto esa instalación previa como
+las siguientes:
+
+- la narración MP3 se embebe además en `Guardian.exe` y se materializa en la
+  ruta canónica antes de reproducirse;
+- el updater actual copia todos los assets del release y verifica que cada
+  archivo destino exista y tenga el mismo tamaño antes de informar éxito;
+- el reemplazo de `GuardianUpdater.exe` se deja pendiente y Guardian lo
+  completa mediante reintentos una vez que el updater anterior libera el
+  ejecutable.
+
+La validación incluyó dos actualizaciones consecutivas en STG, una simulación
+local de updater legado sin carpeta `Assets`, y la validación posterior de la
+release final en PROD. El script reproducible de compatibilidad es:
+
+```powershell
+.\scripts\test-legacy-updater-assets.ps1
+```
+
+Antes de promover una story futura que agregue audio u otros assets, ejecutar
+ese script además de build, self-test y la prueba de updater en STG. El flujo
+detallado de releases está en `docs/update-flow.md`.
+
 ## Preview y capturas
 
 Después de compilar:

@@ -1,10 +1,17 @@
 # Estado actual — Guardian
 
-## POC Visual Story en feature branch
+## Visual Story: POC de potencias de diez
 
-La rama `feature/visual-story-donde-vivis-poc` agrega una POC todavía no promovida ni desplegada en PROD: **Visual Story → Dónde vivís**. Puede configurarse como única misión desde Admin y reutiliza el intervalo, RemoteConfig, bloqueo y telemetría existentes. La experiencia WPF offline dura 13,6 segundos, incluye narración embebida, preview con scrub/reinicio y cinco capturas representativas.
+La POC activa es una microanimación WPF no interactiva sobre multiplicar `23` por
+`10`, `100` y `1000`. Se configura como la categoría **Visual Story** y reutiliza
+selector de misiones, RemoteConfig, intervalos, bloqueo, telemetría y salida de
+Guardian. Cuando se habilita junto a la habilidad de potencias de diez, la story
+aparece en un intervalo y la misión matemática relacionada en el siguiente.
 
-La operación y la validación exclusiva en PC TEST STG están documentadas en `docs/Guardian_VISUAL_STORY_POC.md`. No hay migraciones, endpoints nuevos ni cambios del updater. Esta sección debe actualizarse o retirarse al promover o descartar la POC.
+La release final `0.4.12` está registrada en PROD. Su validación confirmó
+actualización, narración audible, línea de tiempo visual, pausa de multimedia
+externa en disparos automáticos y la secuencia story → misión. El detalle visual,
+telemetría y procedimiento de preview están en `docs/Guardian_VISUAL_STORY_POC.md`.
 
 ## Entornos
 
@@ -107,7 +114,7 @@ La corrección fue integrada en `main` y la release `0.4.4` quedó registrada en
 
 ## Versionado y promoción
 
-La base estable actual del repositorio es `0.4.9`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
+La base estable actual del repositorio es `0.4.12`. Mientras una feature está en desarrollo, STG usa versiones exclusivas con sufijo de rama, por ejemplo `0.1.0-staging-environment`, `0.1.1-staging-environment` y `0.1.2-staging-environment`. Esas versiones no representan la numeración de PROD.
 
 No usar una versión sin sufijo en STG salvo para reproducir de forma explícita una versión ya existente de PROD. La RC `0.4.3-rc.3` se probó integralmente en STG —incluido updater—; `0.4.3` y la corrección `0.4.4` están registradas en PROD. Las versiones `-staging-*` y `-rc` nunca se publican en PROD.
 
