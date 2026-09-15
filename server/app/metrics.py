@@ -544,7 +544,9 @@ def release_markers(db: Session, device: Device, start_utc: datetime | None, end
         query = query.filter(DeviceEvent.occurred_at >= start_utc, DeviceEvent.occurred_at < end_utc)
     for event in query.order_by(DeviceEvent.occurred_at.asc()).all():
         local = as_utc(event.occurred_at).astimezone(tz)
-        version = event.client_version or "Versión no informada"
+        # La importación STG no transfiere releases ni metadatos de instalación;
+        # una versión de cliente histórica no sería una referencia confiable.
+        version = "Actualización registrada" if (event.payload or {}).get("import_source") else event.client_version or "Versión no informada"
         if not markers or markers[-1]["day"] != local.date().isoformat() or markers[-1]["version"] != version:
             markers.append({"day": local.date().isoformat(), "label": local.strftime("%d/%m"), "version": version})
     return markers
