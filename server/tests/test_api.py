@@ -1048,9 +1048,11 @@ def test_skill_progress_uses_seven_day_evidence_instead_of_three_missions_per_da
     subtraction = next(row for row in progress["rows"] if row["skill_id"] == "subtraction")
     multiplication = next(row for row in progress["rows"] if row["skill_id"] == "multiplication")
     assert addition["status"] == "Evidencia inicial de dominio"
-    assert [cell["state"] for cell in addition["cells"]] == ["insufficient"] * 7
+    assert [cell["state"] for cell in addition["cells"]] == ["green"] * 7
+    assert all(cell["sample_small"] for cell in addition["cells"])
     assert subtraction["status"] == "En seguimiento"
-    assert [cell["state"] for cell in subtraction["cells"]] == ["insufficient"] * 7
+    assert [cell["state"] for cell in subtraction["cells"]] == ["red"] * 7
+    assert all(cell["sample_small"] for cell in subtraction["cells"])
     assert [cell["state"] for cell in multiplication["cells"]] == ["no-data"] * 7
 
 

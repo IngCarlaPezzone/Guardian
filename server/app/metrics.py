@@ -452,10 +452,9 @@ def skill_progress(records: list[MissionRecord], tz: tzinfo, start: date | None,
             summary = summarize(grouped[(skill_id, day)])
             valid = summary["attempt_valid_missions"]
             first = summary["first_attempt"]
+            sample_small = bool(valid and valid < 3)
             if not valid:
                 state = "no-data"
-            elif valid < 3:
-                state = "insufficient"
             elif first == valid:
                 state = "green"
             elif summary["first_attempt_rate"] >= 50:
@@ -472,6 +471,7 @@ def skill_progress(records: list[MissionRecord], tz: tzinfo, start: date | None,
                 "first_attempt": first,
                 "first_attempt_rate": summary["first_attempt_rate"],
                 "visual_primer_missions": sum(record.visual_primer_applied for record in grouped[(skill_id, day)] if record.attempts is not None),
+                "sample_small": sample_small,
                 "state": state,
             })
         evidence = cells[-LEARNING_EVIDENCE_DAYS:]
@@ -520,7 +520,7 @@ def skill_progress(records: list[MissionRecord], tz: tzinfo, start: date | None,
     return {
         "days": [{"date": day.isoformat(), "label": day.strftime("%d/%m")} for day in days],
         "rows": rows,
-        "rule": "La evidencia inicial requiere, en los últimos 7 días, al menos 7 misiones válidas en 5 días distintos y todas al primer intento. Los colores diarios siguen mostrando la muestra de cada día.",
+        "rule": "La evidencia inicial requiere, en los últimos 7 días, al menos 7 misiones con intento registrado en 5 días distintos y todas al primer intento. Una trama indica una muestra chica (1–2 misiones), sin ocultar el color de desempeño.",
     }
 
 
@@ -591,6 +591,13 @@ def execution_detail(record: MissionRecord, tz: tzinfo) -> dict:
             timeline.append({"kind": "standalone_feedback", "feedback_kind": feedback_kind, "label": payload.get("feedback_text") or fallback_label, "timestamp": event.occurred_at})
     attempts = record.attempts
     help_text = "Sin dato" if record.max_help_level is None else help_label(record.max_help_level) or "Sin dato"
+    markers = release_markers(db, device, start_utc, end_utc, tz)
+    if progress:
+        markers_by_day: dict[str, list[dict]] = defaultdict(list)
+        for marker in markers:
+            markers_by_day[marker["day"]].append(marker)
+        for day in progress["days"]:
+            day["release_markers"] = markers_by_day[day["date"]]
     return {
         "mission_id": record.mission_id,
         "started_at": record.started_at.astimezone(tz).strftime("%d/%m/%Y %H:%M") if record.started_at else None,
@@ -633,7 +640,7 @@ def dashboard_data(db: Session, device: Device, period: str, start: str | None, 
         "trends": trend_rows(records, tz, resolved_start, resolved_end, trend_dimension_value),
         "trend_dimension": trend_dimension_value,
         "skill_progress": progress,
-        "release_markers": release_markers(db, device, start_utc, end_utc, tz),
+        "release_markers": markers,
         "scope_label": scope_label(category, level, skill),
         "record_count": len(records),
         "supports_help": supports_help,
