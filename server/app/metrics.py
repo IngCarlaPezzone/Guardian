@@ -520,7 +520,7 @@ def skill_progress(records: list[MissionRecord], tz: tzinfo, start: date | None,
     return {
         "days": [{"date": day.isoformat(), "label": day.strftime("%d/%m")} for day in days],
         "rows": rows,
-        "rule": "La evidencia inicial requiere, en los últimos 7 días, al menos 7 misiones con intento registrado en 5 días distintos y todas al primer intento. Una trama indica una muestra chica (1–2 misiones), sin ocultar el color de desempeño.",
+        "rule": "La evidencia inicial requiere, en los últimos 7 días, al menos 7 misiones con intento registrado en 5 días distintos y todas al primer intento. Un tono suave indica una muestra chica (1–2 misiones), sin ocultar el color de desempeño.",
     }
 
 
