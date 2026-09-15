@@ -591,13 +591,6 @@ def execution_detail(record: MissionRecord, tz: tzinfo) -> dict:
             timeline.append({"kind": "standalone_feedback", "feedback_kind": feedback_kind, "label": payload.get("feedback_text") or fallback_label, "timestamp": event.occurred_at})
     attempts = record.attempts
     help_text = "Sin dato" if record.max_help_level is None else help_label(record.max_help_level) or "Sin dato"
-    markers = release_markers(db, device, start_utc, end_utc, tz)
-    if progress:
-        markers_by_day: dict[str, list[dict]] = defaultdict(list)
-        for marker in markers:
-            markers_by_day[marker["day"]].append(marker)
-        for day in progress["days"]:
-            day["release_markers"] = markers_by_day[day["date"]]
     return {
         "mission_id": record.mission_id,
         "started_at": record.started_at.astimezone(tz).strftime("%d/%m/%Y %H:%M") if record.started_at else None,
@@ -630,6 +623,13 @@ def dashboard_data(db: Session, device: Device, period: str, start: str | None, 
     if supports_help and "mission_help" not in summary:
         summary["mission_help"] = percentage_metric([], lambda record: record.max_help_level, lambda value: value >= 1)
         summary["help_distribution"] = distribution([], lambda record: record.max_help_level, {0: "Sin ayuda", 1: "Reformulación", 2: "Pista", 3: "Guía"})
+    markers = release_markers(db, device, start_utc, end_utc, tz)
+    if progress:
+        markers_by_day: dict[str, list[dict]] = defaultdict(list)
+        for marker in markers:
+            markers_by_day[marker["day"]].append(marker)
+        for day in progress["days"]:
+            day["release_markers"] = markers_by_day[day["date"]]
     return {
         "timezone": str(tz),
         "summary": summary,
