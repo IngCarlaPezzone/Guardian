@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using GuardianShared;
 
 namespace Guardian
 {
@@ -102,9 +103,48 @@ namespace Guardian
     {
         private readonly MediaPlayer _player = new MediaPlayer(); private readonly EventLogger _logger; private readonly Mission _mission; private double _durationSeconds;
         public event Action<double> DurationAvailable; public VisualStoryMp3Player(EventLogger logger, Mission mission) { _logger = logger; _mission = mission; _player.MediaOpened += OnOpened; _player.MediaEnded += delegate { Log("VisualStoryAudioCompleted", null); }; _player.MediaFailed += delegate(object s, ExceptionEventArgs e) { Log("VisualStoryAudioFailed", e.ErrorException.Message); }; }
-        public void Start() { var path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Audio", "multiply-by-10-100-1000.mp3"); Log("VisualStoryAudioLoading", null); _player.Open(new Uri(path)); }
+        public void Start()
+        {
+            try
+            {
+                var path = VisualStoryMedia.EnsureNarrationFile();
+                Log("VisualStoryAudioLoading", null); _player.Open(new Uri(path));
+            }
+            catch (Exception ex) { Log("VisualStoryAudioFailed", ex.Message); }
+        }
         private void OnOpened(object sender, EventArgs e) { _durationSeconds = _player.NaturalDuration.HasTimeSpan ? _player.NaturalDuration.TimeSpan.TotalSeconds : 17; if (DurationAvailable != null) DurationAvailable(_durationSeconds); _player.Play(); Log("VisualStoryAudioStarted", null); }
         private void Log(string type, string message) { if (_logger == null || _mission == null) return; var p = VisualStoryDefinition.Telemetry(_mission); p["audio_resource"] = "Assets/Audio/multiply-by-10-100-1000.mp3"; p["audio_output"] = "default_multimedia_endpoint"; p["system_audio_muted"] = CoreAudio.IsDefaultEndpointMuted(); if (_durationSeconds > 0) p["audio_duration_seconds"] = Math.Round(_durationSeconds, 3); if (message != null) p["message"] = message; _logger.Log(type, p); }
         public void Stop() { _player.Stop(); _player.Close(); } public void Dispose() { Stop(); }
+    }
+
+    public static class VisualStoryMedia
+    {
+        private const string NarrationFileName = "multiply-by-10-100-1000.mp3";
+        private const string NarrationResourceName = "Guardian.Assets.Audio.multiply-by-10-100-1000.mp3";
+
+        // The updater from older installs only copied Guardian.exe. Keeping this
+        // narration embedded makes the visual story self-contained during that
+        // one-time bootstrap; MediaPlayer still receives a normal local file.
+        public static string EnsureNarrationFile()
+        {
+            var directory = Path.Combine(GuardianInstallPaths.InstallDirectory, "Assets", "Audio");
+            var target = Path.Combine(directory, NarrationFileName);
+            Directory.CreateDirectory(directory);
+            using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream(NarrationResourceName))
+            {
+                if (source == null) throw new InvalidOperationException("embedded visual story narration was not found");
+                var temporary = target + ".tmp-" + Guid.NewGuid().ToString("N");
+                try
+                {
+                    using (var output = File.Create(temporary)) source.CopyTo(output);
+                    File.Copy(temporary, target, true);
+                }
+                finally
+                {
+                    if (File.Exists(temporary)) File.Delete(temporary);
+                }
+            }
+            return target;
+        }
     }
 }

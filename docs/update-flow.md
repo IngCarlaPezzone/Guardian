@@ -24,14 +24,22 @@ El script:
 4. Updater descarga el ZIP autenticado.
 5. Updater calcula SHA-256 y aborta si no coincide.
 6. Updater crea backup de binarios vigentes.
-7. Updater reemplaza `Guardian.exe` y config de aplicacion.
-8. Updater agenda reemplazo diferido de `GuardianUpdater.exe`.
+7. Updater reemplaza `Guardian.exe`, config de aplicacion y todos los assets incluidos en el release; verifica que cada asset copiado exista y conserve su tamaño antes de informar éxito.
+8. Updater deja su reemplazo como pendiente; el Guardian nuevo lo completa mediante reintentos después de que el updater anterior libera el archivo.
 9. Updater inicia Guardian.
 10. Si el arranque falla, restaura backup y reporta `rolled_back`.
 
 La ubicación canónica de instalación es `%LOCALAPPDATA%\Guardian` (o el override explícito `GUARDIAN_HOME` sólo para instalaciones de prueba/STG). El updater, el autoarranque y los relanzamientos usan esa misma ubicación. Si existe un home explícito, la entrada de autoarranque conserva ese home mediante `--home` para sobrevivir al reboot sin caer en la instalación de PROD. Al iniciar, un cliente nuevo corrige idempotentemente `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\Guardian` si conserva una ruta histórica y registra telemetría técnica del ejecutable y de la reparación. Ejecutar `Guardian.exe` desde un ZIP también copia los binarios a la ubicación canónica antes de registrar el autoarranque.
 
-Nunca se reemplazan ni eliminan `config.json`, `events.jsonl`, `DeviceId` ni `DeviceToken`.
+Nunca se reemplazan ni eliminan `config.json`, `events.jsonl`, `DeviceId` ni `DeviceToken`. Como compatibilidad con updaters antiguos que sólo copiaban ejecutables, la narración de Visual Story también viaja embebida en `Guardian.exe` y se materializa localmente antes de reproducirse.
+
+Antes de publicar un release que agregue o cambie assets, ejecutar también:
+
+```powershell
+.\scripts\test-legacy-updater-assets.ps1
+```
+
+El script simula una instalación con un updater legado que recibe sólo `Guardian.exe`, `Guardian.exe.config` y `GuardianUpdater.exe`; confirma que la narración embebida se restaura en la instalación sin depender de la carpeta `Assets` del ZIP.
 
 ## Validacion Etapa 1: staging -> real
 

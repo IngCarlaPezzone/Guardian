@@ -92,6 +92,7 @@ namespace Guardian
                 var config = GuardianConfig.Load();
                 var installation = CanonicalInstallation.EnsureCurrentBuild();
                 var logger = new EventLogger(config);
+                var updaterReplacement = UpdaterReplacementRecovery.TryCompletePendingReplacement();
                 var startup = StartupManager.EnsureCanonicalRegistration(config.AutoStartEnabled);
                 instanceGuard = SingleInstanceGuard.TryAcquire();
                 if (!instanceGuard.IsAcquired)
@@ -114,6 +115,7 @@ namespace Guardian
                     { "executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.ExecutingExecutablePath) },
                     { "canonical_executable_path", GuardianInstallPaths.RedactForTelemetry(GuardianInstallPaths.GuardianExecutablePath) },
                     { "installation_result", installation.Result },
+                    { "updater_replacement", updaterReplacement },
                     { "startup_command", GuardianInstallPaths.RedactForTelemetry(startup.ConfiguredCommand) },
                     { "startup_repair_result", startup.Result },
                     { "process_id", Process.GetCurrentProcess().Id }
@@ -219,6 +221,7 @@ namespace Guardian
                 File.Copy(source, destination, true);
                 CopySiblingIfPresent(source + ".config", destination + ".config");
                 CopySiblingIfPresent(Path.Combine(Path.GetDirectoryName(source), "GuardianUpdater.exe"), GuardianInstallPaths.UpdaterExecutablePath);
+                CopyAssetsIfPresent(Path.GetDirectoryName(source), GuardianInstallPaths.InstallDirectory);
                 result.Result = "migrated_to_canonical";
             }
             catch (Exception ex)
@@ -231,6 +234,70 @@ namespace Guardian
         private static void CopySiblingIfPresent(string source, string destination)
         {
             if (File.Exists(source)) File.Copy(source, destination, true);
+        }
+
+        private static void CopyAssetsIfPresent(string sourceRoot, string destinationRoot)
+        {
+            var source = Path.Combine(sourceRoot, "Assets");
+            if (!Directory.Exists(source)) return;
+            foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+            {
+                var relative = file.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var destination = Path.Combine(destinationRoot, "Assets", relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                File.Copy(file, destination, true);
+            }
+        }
+    }
+
+    public static class UpdaterReplacementRecovery
+    {
+        private static int _retryScheduled;
+
+        public static string TryCompletePendingReplacement()
+        {
+            return TryCompletePendingReplacement(GuardianInstallPaths.InstallDirectory);
+        }
+
+        internal static string TryCompletePendingReplacement(string directory)
+        {
+            var pending = Path.Combine(directory, "GuardianUpdater.exe.pending");
+            var target = Path.Combine(directory, "GuardianUpdater.exe");
+            if (!File.Exists(pending)) return "none";
+            if (TryReplace(pending, target, directory)) return "completed";
+            if (Interlocked.Exchange(ref _retryScheduled, 1) == 0)
+            {
+                ThreadPool.QueueUserWorkItem(delegate
+                {
+                    for (var attempt = 0; attempt < 30; attempt++)
+                    {
+                        Thread.Sleep(1000);
+                        if (TryReplace(pending, target, directory)) return;
+                    }
+                    WriteLog(directory, "UpdaterReplacementPendingAfterRetries");
+                });
+            }
+            return "retry_scheduled";
+        }
+
+        private static bool TryReplace(string pending, string target, string directory)
+        {
+            try
+            {
+                if (!File.Exists(pending)) return true;
+                File.Copy(pending, target, true);
+                File.Delete(pending);
+                WriteLog(directory, "UpdaterReplacementCompleted");
+                return true;
+            }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+        }
+
+        private static void WriteLog(string directory, string message)
+        {
+            try { File.AppendAllText(Path.Combine(directory, "updater.log"), DateTimeOffset.UtcNow.ToString("o") + " " + message + Environment.NewLine, Encoding.UTF8); }
+            catch { }
         }
     }
 
@@ -3883,7 +3950,26 @@ namespace Guardian
             {
                 if (!resources.Contains("Guardian.Assets.Icons." + asset)) failures.Add("guardian visual asset missing: " + asset);
             }
-            if (!File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Audio", "multiply-by-10-100-1000.mp3"))) failures.Add("visual story MP3 missing from build output");
+            if (!resources.Contains("Guardian.Assets.Audio.multiply-by-10-100-1000.mp3")) failures.Add("embedded visual story MP3 missing");
+            try
+            {
+                var narration = VisualStoryMedia.EnsureNarrationFile();
+                if (!File.Exists(narration) || new FileInfo(narration).Length == 0) failures.Add("embedded visual story MP3 was not materialized");
+            }
+            catch (Exception ex) { failures.Add("embedded visual story MP3 materialization failed: " + ex.GetType().Name); }
+
+            var replacementTestRoot = Path.Combine(Path.GetTempPath(), "GuardianUpdaterReplacementSelfTest-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(replacementTestRoot);
+                var pending = Path.Combine(replacementTestRoot, "GuardianUpdater.exe.pending");
+                var updater = Path.Combine(replacementTestRoot, "GuardianUpdater.exe");
+                File.WriteAllText(pending, "self-test-updater", Encoding.UTF8);
+                var replacement = UpdaterReplacementRecovery.TryCompletePendingReplacement(replacementTestRoot);
+                if (replacement != "completed" || !File.Exists(updater) || File.ReadAllText(updater, Encoding.UTF8) != "self-test-updater") failures.Add("pending updater replacement failed");
+            }
+            catch (Exception ex) { failures.Add("pending updater replacement self-test failed: " + ex.GetType().Name); }
+            finally { try { if (Directory.Exists(replacementTestRoot)) Directory.Delete(replacementTestRoot, true); } catch { } }
         }
 
         private static void CheckConfig(List<string> failures)

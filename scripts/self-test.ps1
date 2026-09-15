@@ -8,6 +8,11 @@ if (!(Test-Path $exe)) {
   & (Join-Path $PSScriptRoot "build.ps1")
 }
 
+$visualStoryAudio = Join-Path $root "dist\Assets\Audio\multiply-by-10-100-1000.mp3"
+if (!(Test-Path -LiteralPath $visualStoryAudio) -or (Get-Item -LiteralPath $visualStoryAudio).Length -eq 0) {
+  throw "El build no incluyó la narración MP3 de Visual Story."
+}
+
 $previousGuardianHome = $env:GUARDIAN_HOME
 $testHome = Join-Path ([System.IO.Path]::GetTempPath()) ("GuardianSelfTest-" + [guid]::NewGuid().ToString("N"))
 

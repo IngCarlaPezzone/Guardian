@@ -121,6 +121,7 @@ namespace GuardianUpdater
                     CopyIfExists(extractDir, appDir, "Guardian.exe");
                     CopyIfExists(extractDir, appDir, "Guardian.exe.config");
                     CopyDirectoryIfExists(extractDir, appDir, "Assets");
+                    VerifyDirectoryCopy(extractDir, appDir, "Assets");
                     ScheduleUpdaterReplacement(extractDir, appDir, log);
                     StartGuardian(appDir);
                     Thread.Sleep(5000);
@@ -300,6 +301,22 @@ namespace GuardianUpdater
             }
         }
 
+        internal static void VerifyDirectoryCopy(string sourceRoot, string destinationRoot, string directoryName)
+        {
+            var source = Path.Combine(sourceRoot, directoryName);
+            if (!Directory.Exists(source)) return;
+            var destination = Path.Combine(destinationRoot, directoryName);
+            foreach (var sourceFile in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+            {
+                var relative = sourceFile.Substring(source.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var target = Path.Combine(destination, relative);
+                if (!File.Exists(target) || new FileInfo(sourceFile).Length != new FileInfo(target).Length)
+                {
+                    throw new InvalidOperationException("asset copy verification failed: " + relative);
+                }
+            }
+        }
+
         private static void RestoreBackup(string backupDir, string appDir, UpdaterLog log)
         {
             foreach (var fileName in new[] { "Guardian.exe", "Guardian.exe.config" })
@@ -319,16 +336,10 @@ namespace GuardianUpdater
             var source = Path.Combine(sourceDir, "GuardianUpdater.exe");
             if (!File.Exists(source)) return;
             var pending = Path.Combine(appDir, "GuardianUpdater.exe.pending");
-            var target = Path.Combine(appDir, "GuardianUpdater.exe");
             File.Copy(source, pending, true);
-            var command = "/C ping 127.0.0.1 -n 3 > nul & move /Y " + Quote(pending) + " " + Quote(target) + " > nul";
-            Process.Start(new ProcessStartInfo("cmd.exe", command)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden
-            });
-            log.Write("UpdaterReplacementScheduled");
+            // Guardian starts before this updater exits. It owns the bounded
+            // retry so the pending replacement cannot race this process lock.
+            log.Write("UpdaterReplacementPending");
         }
 
         private static string Quote(string value)
@@ -628,6 +639,7 @@ namespace GuardianUpdater
                 File.WriteAllText(iconPath, "sample-icon", Encoding.UTF8);
                 Program.CopyDirectoryIfExists(sourceRoot, destinationRoot, "Assets");
                 if (!File.Exists(Path.Combine(destinationRoot, "Assets", "Icons", "sample.png"))) return 3;
+                Program.VerifyDirectoryCopy(sourceRoot, destinationRoot, "Assets");
                 return 0;
             }
             finally
