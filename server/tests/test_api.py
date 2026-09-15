@@ -1029,31 +1029,50 @@ def test_word_problem_metrics_show_mission_help_without_orthographic_metrics():
     assert "Apoyo ortográfico" not in page.text
 
 
-def test_skill_progress_requires_three_consecutive_days_with_three_first_attempts():
+def test_skill_progress_uses_seven_day_evidence_instead_of_three_missions_per_day():
     records = []
-    for day in (1, 2, 3):
-        for index in range(3):
-            records.append(MissionRecord(
-                mission_id=f"addition-{day}-{index}", category_id="math", level_id="basic_operations_1", skill_id="addition", variant_id="generated",
-                solved_at=datetime(2026, 9, day, 10, index, tzinfo=timezone.utc), solved_attempt=1,
-            ))
-        for index in range(3):
-            records.append(MissionRecord(
-                mission_id=f"subtraction-{day}-{index}", category_id="math", level_id="basic_operations_1", skill_id="subtraction", variant_id="generated",
-                solved_at=datetime(2026, 9, day, 11, index, tzinfo=timezone.utc), solved_attempt=2,
-            ))
+    for day in range(1, 8):
+        records.append(MissionRecord(
+            mission_id=f"addition-{day}", category_id="math", level_id="basic_operations_1", skill_id="addition", variant_id="generated",
+            solved_at=datetime(2026, 9, day, 10, tzinfo=timezone.utc), solved_attempt=1,
+        ))
+        records.append(MissionRecord(
+            mission_id=f"subtraction-{day}", category_id="math", level_id="basic_operations_1", skill_id="subtraction", variant_id="generated",
+            solved_at=datetime(2026, 9, day, 11, tzinfo=timezone.utc), solved_attempt=2,
+        ))
 
-    progress = skill_progress(records, timezone.utc, date(2026, 9, 1), date(2026, 9, 3), "math", "basic_operations_1")
+    progress = skill_progress(records, timezone.utc, date(2026, 9, 1), date(2026, 9, 7), "math", "basic_operations_1")
 
-    assert [item["label"] for item in progress["days"]] == ["01/09", "02/09", "03/09"]
+    assert [item["label"] for item in progress["days"]] == ["01/09", "02/09", "03/09", "04/09", "05/09", "06/09", "07/09"]
     addition = next(row for row in progress["rows"] if row["skill_id"] == "addition")
     subtraction = next(row for row in progress["rows"] if row["skill_id"] == "subtraction")
     multiplication = next(row for row in progress["rows"] if row["skill_id"] == "multiplication")
-    assert addition["status"] == "Consolidada provisionalmente"
-    assert [cell["state"] for cell in addition["cells"]] == ["green", "green", "green"]
+    assert addition["status"] == "Evidencia inicial de dominio"
+    assert [cell["state"] for cell in addition["cells"]] == ["insufficient"] * 7
     assert subtraction["status"] == "En seguimiento"
-    assert [cell["state"] for cell in subtraction["cells"]] == ["red", "red", "red"]
-    assert [cell["state"] for cell in multiplication["cells"]] == ["no-data", "no-data", "no-data"]
+    assert [cell["state"] for cell in subtraction["cells"]] == ["insufficient"] * 7
+    assert [cell["state"] for cell in multiplication["cells"]] == ["no-data"] * 7
+
+
+def test_skill_progress_marks_visual_help_review_and_independence():
+    records = []
+    for day in range(1, 6):
+        records.append(MissionRecord(
+            mission_id=f"visual-{day}", category_id="math", level_id="basic_operations_1", skill_id="multiply_by_powers_of_ten", variant_id="multiply_by_10",
+            solved_at=datetime(2026, 9, day, 10, tzinfo=timezone.utc), solved_attempt=1, visual_primer_applied=True,
+        ))
+    progress = skill_progress(records, timezone.utc, date(2026, 9, 1), date(2026, 9, 5), "math", "basic_operations_1")
+    powers = next(row for row in progress["rows"] if row["skill_id"] == "multiply_by_powers_of_ten")
+    assert powers["status"] == "Candidata a retirar ayuda visual"
+
+    for day in range(6, 11):
+        records.append(MissionRecord(
+            mission_id=f"independent-{day}", category_id="math", level_id="basic_operations_1", skill_id="multiply_by_powers_of_ten", variant_id="multiply_by_10",
+            solved_at=datetime(2026, 9, day, 10, tzinfo=timezone.utc), solved_attempt=1,
+        ))
+    progress = skill_progress(records, timezone.utc, date(2026, 9, 1), date(2026, 9, 10), "math", "basic_operations_1")
+    powers = next(row for row in progress["rows"] if row["skill_id"] == "multiply_by_powers_of_ten")
+    assert powers["status"] == "Independiente sin ayuda visual"
 
 
 def test_metrics_keep_historical_fields_unknown_and_rebuild_real_executions():

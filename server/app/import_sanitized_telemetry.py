@@ -16,6 +16,7 @@ NAMESPACE = uuid.UUID("bb81f8b6-8d5f-4e11-9ba7-ec73425bb650")
 SAFE_PAYLOAD_KEYS = {
     "mission_id", "missionId", "category_id", "level_id", "skill_id", "variant_id",
     "attempt", "result", "categoryId", "levelId", "skillId", "variantId",
+    "visual_primer_applied", "visual_primer_skill_id",
 }
 
 

@@ -27,3 +27,10 @@ def test_windows_export_uses_stdin_not_python_code_argument():
     assert "$exportCode | & docker compose" in script
     assert "guardian-app python -" in script
     assert "python -c $exportCode" not in script
+
+
+def test_import_script_can_filter_one_source_without_exporting_its_identity():
+    script = (Path(__file__).parents[2] / "scripts" / "import-prod-telemetry-to-stg.ps1").read_text(encoding="utf-8")
+    assert "$SourceDeviceId" in script
+    assert "TELEMETRY_SOURCE_DEVICE_ID" in script
+    assert '"visual_primer_applied"' in script

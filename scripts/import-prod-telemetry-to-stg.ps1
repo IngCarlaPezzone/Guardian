@@ -1,13 +1,20 @@
 param(
   [switch]$IncludeTechnical,
   [switch]$Replace,
+  [ValidatePattern("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")][string]$SourceDeviceId,
+  [string]$ProdEnvPath,
+  [string]$StgEnvPath,
+  [string]$ProdComposeFile,
+  [string]$StgComposeFile,
   [ValidateRange(1, 100000)][int]$Limit = 10000
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$prodEnvPath = Join-Path $root ".env"
-$stgEnvPath = Join-Path $root ".env.stg"
+$prodEnvPath = if ($ProdEnvPath) { $ProdEnvPath } else { Join-Path $root ".env" }
+$stgEnvPath = if ($StgEnvPath) { $StgEnvPath } else { Join-Path $root ".env.stg" }
+$prodComposeFile = if ($ProdComposeFile) { $ProdComposeFile } else { Join-Path $root "deploy\docker-compose.yml" }
+$stgComposeFile = if ($StgComposeFile) { $StgComposeFile } else { Join-Path $root "deploy\docker-compose.stg.yml" }
 if (!(Test-Path $prodEnvPath) -or !(Test-Path $stgEnvPath)) { throw "Se requieren .env (PROD) y .env.stg (STG)." }
 
 function Read-DotEnv {
@@ -30,6 +37,7 @@ if ($prodEnvironment -ne "PROD" -or $stgEnvironment -ne "STG") { throw "Abortado
 if ($prod["DATABASE_URL"] -eq $stg["DATABASE_URL"] -or $prod["POSTGRES_DB"] -eq $stg["POSTGRES_DB"]) { throw "Abortado: PROD y STG no tienen DB inequívocamente distintas." }
 
 $includeTechnicalValue = if ($IncludeTechnical) { "1" } else { "0" }
+$sourceDeviceIdValue = if ($SourceDeviceId) { $SourceDeviceId } else { "" }
 
 # This command runs only SELECT queries in the existing PROD app container. It emits no device IDs or full payloads.
 $exportCode = @'
@@ -40,9 +48,13 @@ types = {"MissionStarted", "MissionFailed", "MissionSolved"}
 if os.environ.get("TELEMETRY_INCLUDE_TECHNICAL") == "1":
     types.update({"Heartbeat", "RemoteConfigApplied", "UpdateCompleted", "MonitoringPaused", "MonitoringResumed", "TriggerMissionCommandReceived", "RemoteMissionTriggered"})
 limit = int(os.environ["TELEMETRY_LIMIT"])
-safe = {"mission_id", "missionId", "category_id", "categoryId", "level_id", "levelId", "skill_id", "skillId", "variant_id", "variantId", "attempt", "result"}
+safe = {"mission_id", "missionId", "category_id", "categoryId", "level_id", "levelId", "skill_id", "skillId", "variant_id", "variantId", "attempt", "result", "visual_primer_applied", "visual_primer_skill_id"}
 with SessionLocal() as db:
-    rows = db.query(DeviceEvent).filter(DeviceEvent.event_type.in_(types)).order_by(DeviceEvent.occurred_at.asc(), DeviceEvent.id.asc()).limit(limit).all()
+    query = db.query(DeviceEvent).filter(DeviceEvent.event_type.in_(types))
+    source_device_id = os.environ.get("TELEMETRY_SOURCE_DEVICE_ID")
+    if source_device_id:
+        query = query.filter(DeviceEvent.device_id == source_device_id)
+    rows = query.order_by(DeviceEvent.occurred_at.asc(), DeviceEvent.id.asc()).limit(limit).all()
     slots = {}
     events = []
     for row in rows:
@@ -53,12 +65,12 @@ print(json.dumps({"schema": "prod-telemetry-sanitized-v1", "events": events}, se
 '@
 
 # Feed Python source through stdin. This avoids PowerShell/Docker argument quoting entirely.
-$dataset = $exportCode | & docker compose --env-file $prodEnvPath -f (Join-Path $root "deploy\docker-compose.yml") exec -T -e "TELEMETRY_INCLUDE_TECHNICAL=$includeTechnicalValue" -e "TELEMETRY_LIMIT=$Limit" guardian-app python -
+$dataset = $exportCode | & docker compose --env-file $prodEnvPath -f $prodComposeFile exec -T -e "TELEMETRY_INCLUDE_TECHNICAL=$includeTechnicalValue" -e "TELEMETRY_LIMIT=$Limit" -e "TELEMETRY_SOURCE_DEVICE_ID=$sourceDeviceIdValue" guardian-app python -
 if ($LASTEXITCODE -ne 0) { throw "La exportación de sólo lectura desde PROD falló; STG no fue modificado." }
 try { $parsed = $dataset | ConvertFrom-Json } catch { throw "La exportación no produjo un dataset sanitizado válido; STG no fue modificado." }
 if ($parsed.schema -ne "prod-telemetry-sanitized-v1") { throw "Schema de exportación inesperado; STG no fue modificado." }
 
-$importArgs = @("compose", "-p", "guardian-stg", "--env-file", $stgEnvPath, "-f", (Join-Path $root "deploy\docker-compose.stg.yml"), "exec", "-T", "guardian-stg-app", "python", "-m", "server.app.import_sanitized_telemetry")
+$importArgs = @("compose", "-p", "guardian-stg", "--env-file", $stgEnvPath, "-f", $stgComposeFile, "exec", "-T", "guardian-stg-app", "python", "-m", "server.app.import_sanitized_telemetry")
 if ($Replace) { $importArgs += "--replace" }
 $dataset | & docker @importArgs
 if ($LASTEXITCODE -ne 0) { throw "La importación STG falló." }

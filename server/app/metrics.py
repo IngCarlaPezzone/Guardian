@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.orm import Session
 
-from server.app.models import Device, DeviceEvent
+from server.app.models import Device, DeviceEvent, UpdateCommand
 
 
 CATALOG = {
@@ -60,6 +60,11 @@ QUESTION_LABELS = {
 }
 
 MISSION_EVENTS = {"MissionStarted", "MissionFailed", "MissionHelpRequested", "MissionWritingHintShown", "MissionFeedbackShown", "MissionSolved"}
+LEARNING_EVIDENCE_DAYS = 7
+LEARNING_EVIDENCE_MIN_MISSIONS = 7
+LEARNING_EVIDENCE_MIN_ACTIVE_DAYS = 5
+VISUAL_HELP_REVIEW_DAYS = 5
+VISUAL_HELP_REVIEW_MIN_MISSIONS = 5
 
 
 def device_timezone(device: Device) -> tzinfo:
@@ -418,11 +423,12 @@ def trend_rows(records: list[MissionRecord], tz: ZoneInfo, start: date | None, e
 
 
 def skill_progress(records: list[MissionRecord], tz: tzinfo, start: date | None, end: date | None, category: str | None, level: str | None) -> dict | None:
-    """Construye el seguimiento diario simple por skill para un nivel.
+    """Construye el heatmap diario y una señal de evidencia por ventana móvil.
 
-    La regla de consolidación es deliberadamente conservadora: tres días locales
-    consecutivos, con al menos tres misiones válidas por día, todas resueltas al
-    primer intento. Es una señal para el adulto; no modifica la configuración.
+    La rotación puede dejar sólo una o dos misiones por habilidad cada día. Por
+    eso los colores diarios conservan la muestra insuficiente, pero el estado se
+    decide con evidencia acumulada de los últimos siete días. Es una señal para
+    el adulto; no modifica la configuración ni apaga ayudas automáticamente.
     """
     if not category or not level or not start or not end:
         return None
@@ -465,25 +471,83 @@ def skill_progress(records: list[MissionRecord], tz: tzinfo, start: date | None,
                 "valid_missions": valid,
                 "first_attempt": first,
                 "first_attempt_rate": summary["first_attempt_rate"],
+                "visual_primer_missions": sum(record.visual_primer_applied for record in grouped[(skill_id, day)] if record.attempts is not None),
                 "state": state,
             })
-        recent = cells[-3:]
-        consolidated = len(recent) == 3 and all(
-            cell["valid_missions"] >= 3 and cell["first_attempt"] == cell["valid_missions"]
-            for cell in recent
+        evidence = cells[-LEARNING_EVIDENCE_DAYS:]
+        evidence_valid = sum(cell["valid_missions"] for cell in evidence)
+        evidence_first = sum(cell["first_attempt"] for cell in evidence)
+        evidence_active_days = sum(cell["valid_missions"] > 0 for cell in evidence)
+        visual_review = cells[-VISUAL_HELP_REVIEW_DAYS:]
+        visual_valid = sum(cell["valid_missions"] for cell in visual_review)
+        visual_first = sum(cell["first_attempt"] for cell in visual_review)
+        visual_assisted = sum(cell["visual_primer_missions"] for cell in visual_review)
+        had_visual_help_before_review = any(cell["visual_primer_missions"] for cell in cells[:-VISUAL_HELP_REVIEW_DAYS])
+        has_initial_evidence = (
+            len(evidence) == LEARNING_EVIDENCE_DAYS
+            and evidence_valid >= LEARNING_EVIDENCE_MIN_MISSIONS
+            and evidence_active_days >= LEARNING_EVIDENCE_MIN_ACTIVE_DAYS
+            and evidence_first == evidence_valid
         )
+        candidate_to_remove_visual_help = (
+            len(visual_review) == VISUAL_HELP_REVIEW_DAYS
+            and visual_valid >= VISUAL_HELP_REVIEW_MIN_MISSIONS
+            and visual_first == visual_valid == visual_assisted
+        )
+        independent_without_visual_help = (
+            len(visual_review) == VISUAL_HELP_REVIEW_DAYS
+            and had_visual_help_before_review
+            and visual_valid >= VISUAL_HELP_REVIEW_MIN_MISSIONS
+            and visual_first == visual_valid
+            and visual_assisted == 0
+        )
+        if candidate_to_remove_visual_help:
+            status, status_class = "Candidata a retirar ayuda visual", "visual-review"
+        elif independent_without_visual_help:
+            status, status_class = "Independiente sin ayuda visual", "independent"
+        elif has_initial_evidence:
+            status, status_class = "Evidencia inicial de dominio", "evidence"
+        else:
+            status, status_class = "En seguimiento", "monitoring"
         rows.append({
             "skill_id": skill_id,
             "label": label,
             "cells": cells,
-            "status": "Consolidada provisionalmente" if consolidated else "En seguimiento",
-            "status_class": "consolidated" if consolidated else "monitoring",
+            "status": status,
+            "status_class": status_class,
+            "evidence": {"valid_missions": evidence_valid, "first_attempt": evidence_first, "active_days": evidence_active_days},
         })
     return {
         "days": [{"date": day.isoformat(), "label": day.strftime("%d/%m")} for day in days],
         "rows": rows,
-        "rule": "Se considera consolidada provisionalmente si durante los últimos 3 días del período hubo al menos 3 misiones por día y todas se resolvieron al primer intento.",
+        "rule": "La evidencia inicial requiere, en los últimos 7 días, al menos 7 misiones válidas en 5 días distintos y todas al primer intento. Los colores diarios siguen mostrando la muestra de cada día.",
     }
+
+
+def release_markers(db: Session, device: Device, start_utc: datetime | None, end_utc: datetime | None, tz: tzinfo) -> list[dict]:
+    """Devuelve hitos efectivos; en STG importado usa el evento técnico seguro."""
+    commands = db.query(UpdateCommand).filter(UpdateCommand.device_id == device.id, UpdateCommand.status == "success")
+    if start_utc is not None:
+        commands = commands.filter(UpdateCommand.completed_at >= start_utc, UpdateCommand.completed_at < end_utc)
+    markers = []
+    for command in commands.order_by(UpdateCommand.completed_at.asc(), UpdateCommand.requested_at.asc()).all():
+        if command.completed_at is None:
+            continue
+        local = as_utc(command.completed_at).astimezone(tz)
+        version = command.target_version
+        if not markers or markers[-1]["day"] != local.date().isoformat() or markers[-1]["version"] != version:
+            markers.append({"day": local.date().isoformat(), "label": local.strftime("%d/%m"), "version": version})
+    if markers:
+        return markers
+    query = db.query(DeviceEvent).filter(DeviceEvent.device_id == device.id, DeviceEvent.event_type == "UpdateCompleted")
+    if start_utc is not None:
+        query = query.filter(DeviceEvent.occurred_at >= start_utc, DeviceEvent.occurred_at < end_utc)
+    for event in query.order_by(DeviceEvent.occurred_at.asc()).all():
+        local = as_utc(event.occurred_at).astimezone(tz)
+        version = event.client_version or "Versión no informada"
+        if not markers or markers[-1]["day"] != local.date().isoformat() or markers[-1]["version"] != version:
+            markers.append({"day": local.date().isoformat(), "label": local.strftime("%d/%m"), "version": version})
+    return markers
 
 
 def help_label(level: int | None) -> str | None:
@@ -567,6 +631,7 @@ def dashboard_data(db: Session, device: Device, period: str, start: str | None, 
         "trends": trend_rows(records, tz, resolved_start, resolved_end, trend_dimension_value),
         "trend_dimension": trend_dimension_value,
         "skill_progress": progress,
+        "release_markers": release_markers(db, device, start_utc, end_utc, tz),
         "scope_label": scope_label(category, level, skill),
         "record_count": len(records),
         "supports_help": supports_help,

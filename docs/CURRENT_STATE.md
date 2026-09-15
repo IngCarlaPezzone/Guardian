@@ -130,11 +130,17 @@ Para poblar Activity o métricas con comportamiento real sin acoplar entornos:
 .\scripts\import-prod-telemetry-to-stg.ps1 -IncludeTechnical
 # Reemplaza el dataset importado anterior en los dispositivos ficticios STG
 .\scripts\import-prod-telemetry-to-stg.ps1 -Replace
+# Filtra un único origen sólo durante la lectura de PROD; STG no recibe su identidad.
+.\scripts\import-prod-telemetry-to-stg.ps1 -SourceDeviceId "00000000-0000-0000-0000-000000000000" -IncludeTechnical -Replace
+# Desde un worktree, se pueden indicar los env files del checkout operativo sin copiarlos.
+.\scripts\import-prod-telemetry-to-stg.ps1 -ProdEnvPath "C:\ruta\Guardian\.env" -StgEnvPath "C:\ruta\Guardian\.env.stg"
+# Si el worktree usa el contenedor STG ya activo, indicar también ambos Compose del checkout operativo.
+.\scripts\import-prod-telemetry-to-stg.ps1 -ProdComposeFile "C:\ruta\Guardian\deploy\docker-compose.yml" -StgComposeFile "C:\ruta\Guardian\deploy\docker-compose.stg.yml"
 ```
 
 El script exige `.env` PROD y `.env.stg` STG, comprueba `origen=PROD`, `destino=STG` y DBs diferentes antes de operar. Lee PROD mediante consultas `SELECT` dentro de `guardian-app`; sólo escribe en `guardian-stg-app`.
 
-La whitelist por defecto es `MissionStarted`, `MissionFailed` y `MissionSolved`. Con `-IncludeTechnical` suma solamente eventos técnicos seguros definidos en el script. Conserva UTC/timestamp, tipo, versión de cliente y los campos educativos `mission_id`/`missionId`, categoría, nivel, skill, variant, intento y resultado. No transfiere device ID, hostname, display name, token, bootstrap token, perfil, nombre, apellido, fecha de nacimiento, RemoteConfig, comandos, releases, credenciales, respuestas ni el payload completo. Los eventos se asignan a dispositivos ficticios `STG-IMPORTED-TELEMETRY-*`; una segunda ejecución no duplica el mismo dataset y `-Replace` lo recrea explícitamente.
+La whitelist por defecto es `MissionStarted`, `MissionFailed` y `MissionSolved`. Con `-IncludeTechnical` suma solamente eventos técnicos seguros definidos en el script. Conserva UTC/timestamp, tipo, versión de cliente y los campos educativos `mission_id`/`missionId`, categoría, nivel, skill, variant, intento, resultado y marcadores booleanos de ayuda visual. No transfiere device ID, hostname, display name, token, bootstrap token, perfil, nombre, apellido, fecha de nacimiento, RemoteConfig, comandos, releases, credenciales, respuestas ni el payload completo. Con `-SourceDeviceId` el filtro se aplica durante el `SELECT` de PROD y ese identificador no se transfiere. Los eventos se asignan a dispositivos ficticios `STG-IMPORTED-TELEMETRY-*`; una segunda ejecución no duplica el mismo dataset y `-Replace` lo recrea explícitamente.
 
 ## Validación manual STG realizada
 
