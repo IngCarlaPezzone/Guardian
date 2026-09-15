@@ -6,6 +6,7 @@ param(
   [string]$StgEnvPath,
   [string]$ProdComposeFile,
   [string]$StgComposeFile,
+  [ValidatePattern("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")][string]$TargetStgDeviceId,
   [ValidateRange(1, 100000)][int]$Limit = 10000
 )
 
@@ -72,6 +73,7 @@ if ($parsed.schema -ne "prod-telemetry-sanitized-v1") { throw "Schema de exporta
 
 $importArgs = @("compose", "-p", "guardian-stg", "--env-file", $stgEnvPath, "-f", $stgComposeFile, "exec", "-T", "guardian-stg-app", "python", "-m", "server.app.import_sanitized_telemetry")
 if ($Replace) { $importArgs += "--replace" }
+if ($TargetStgDeviceId) { $importArgs += @("--target-device-id", $TargetStgDeviceId) }
 $dataset | & docker @importArgs
 if ($LASTEXITCODE -ne 0) { throw "La importación STG falló." }
 Write-Host "Importación terminada. Sólo se copiaron eventos sanitizados a dispositivos ficticios STG."
