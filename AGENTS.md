@@ -632,3 +632,14 @@ Reglas no negociables:
 ### Importación sanitizada de telemetría
 
 `import-prod-telemetry-to-stg.ps1` es la única vía permitida para importar comportamiento de Activity desde PROD hacia STG. Debe mantener origen de sólo lectura y destino exclusivamente STG, verificar ambos entornos y transferir únicamente la whitelist educativa sanitizada. Nunca transferir dispositivos, tokens, perfiles, respuestas, RemoteConfig, comandos, releases ni credenciales.
+
+### Infraestructura operativa y despliegue
+
+- Preservar la configuración operativa de Docker Compose y sus redes externas, especialmente
+  `cloudflare_edge`.
+- No asumir que una configuración local ya desplegada está versionada: comparar el estado efectivo
+  con Git antes de recrear servicios o integrar cambios.
+- Mantener los cambios de infraestructura separados de los cambios de aplicación.
+- No reiniciar ni recrear servicios ajenos al alcance autorizado.
+- Los despliegues de Guardian son manuales y los administra la usuaria; no desplegar sin su
+  autorización explícita.
