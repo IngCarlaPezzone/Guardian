@@ -47,9 +47,16 @@ services:
     depends_on:
       guardian-app:
         condition: service_healthy
+    networks:
+      - default
+      - cloudflare_edge
 
 volumes:
   guardian_postgres_data:
     # Preserve the existing PROD database while the Compose project is renamed.
     name: deploy_guardian_postgres_data
+    external: true
+
+networks:
+  cloudflare_edge:
     external: true
